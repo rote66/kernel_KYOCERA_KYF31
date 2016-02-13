@@ -92,3 +92,5 @@ obj-y += OEM_bfss.o
 
 #KC QALOG
 obj-y += kclog_smem.o
+
+obj-$(CONFIG_FORCE_FAST_CHARGE) += fastchg.o
