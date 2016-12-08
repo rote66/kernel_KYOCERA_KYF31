@@ -23,6 +23,7 @@
 #include <linux/powersuspend.h>
 #include <asm/cacheflush.h>
 #include <soc/qcom/scm.h>
+#include <linux/powersuspend.h>
 #include "governor.h"
 #ifdef CONFIG_ADRENO_IDLER
 #include "adreno_idler.h"
@@ -69,6 +70,9 @@ static void do_partner_start_event(struct work_struct *work);
 static void do_partner_stop_event(struct work_struct *work);
 static void do_partner_suspend_event(struct work_struct *work);
 static void do_partner_resume_event(struct work_struct *work);
+
+/* Boolean to detect if pm has entered suspend mode */
+static bool suspended = false;
 
 /* Trap into the TrustZone, and call funcs there. */
 static int __secure_tz_reset_entry2(unsigned int *scm_data, u32 size_scm_data,
