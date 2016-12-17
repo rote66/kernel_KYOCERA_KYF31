@@ -283,3 +283,5 @@ obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
 ifeq ($(KC_DEBUGTOOL_ENABLED_EXPORT), enable)
 CFLAGS_wcd9xxx-mbhc.o += -DKC_BATTERY_LOG_ENABLED
 endif
+
+obj-$(CONFIG_SOUND_CONTROL_HAX_3_GPL) += sound_control_3_gpl.o
