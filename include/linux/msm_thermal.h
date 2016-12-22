@@ -24,10 +24,6 @@
 #define CPU1_DEVICE     "cpu1"
 #define CPU2_DEVICE     "cpu2"
 #define CPU3_DEVICE     "cpu3"
-#define CPU4_DEVICE     "cpu4"
-#define CPU5_DEVICE     "cpu5"
-#define CPU6_DEVICE     "cpu6"
-#define CPU7_DEVICE     "cpu7"
 #define CPUFREQ_MAX_NO_MITIGATION     UINT_MAX
 #define CPUFREQ_MIN_NO_MITIGATION     0
 #define HOTPLUG_NO_MITIGATION(_mask)  cpumask_clear(_mask)
