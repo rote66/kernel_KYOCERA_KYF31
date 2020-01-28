@@ -62,7 +62,7 @@ static DEFINE_SPINLOCK(tz_lock);
 static bool suspended;
 
 /* Boolean to detect if panel has gone off */
-static bool power_suspended = false;
+// static bool power_suspended = false;
 
 struct msm_adreno_extended_profile *partner_gpu_profile;
 static void do_partner_start_event(struct work_struct *work);
