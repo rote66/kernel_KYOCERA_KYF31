@@ -1,0 +1,35 @@
+#!/bin/bash
+
+VER=$1
+SUB=$2
+
+rm -f repack_zip/emp/zImage
+#rm -f repack_zip/emp/*.dtb
+#rm -f magisk_module/system/lib/modules/*.ko
+
+#if [ ! -d magisk_module/system ]; then
+#	mkdir magisk_module/system
+#	mkdir magisk_module/system/lib
+	#mkdir magisk_module/system/lib/modules
+    #mkdir magisk_module/system/lib/modules/qca_cld
+#fi
+
+mv arch/arm64/boot/Image.gz-dtb repack_zip/emp/zImage
+#find -name "*.ko" -exec mv {} magisk_module/system/lib/modules \;
+#repack_zip/emp/strip --strip-unneeded magisk_module/system/lib/modules/*
+#mv magisk_module/system/lib/modules/wlan.ko magisk_module/system/lib/modules/qca_cld/qca_cld_wlan.ko
+
+cd repack_zip
+zip -r kernel.zip *
+mv kernel.zip ../
+#cd ../magisk_module
+#zip -r KYF31_EMP_Kernel_modules_magisk.zip *
+#mv KYF31_EMP_Kernel_modules_magisk.zip ../
+cd ..
+echo "--------------------------------------------------"
+echo "-              Repack      Completed             -"
+echo "--------------------------------------------------"
+echo "-              kernel  by rote66                 -"
+echo "--------------------------------------------------"
+echo "-Cuttting Edge Aftermarket Kyocera Phone Technology-"
+echo "--------------------------------------------------"
