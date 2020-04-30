@@ -1,7 +1,7 @@
 #!/bin/sh
 make clean & make mrproper
 #rm arch/arm/boot/dts/*/*.dtb
-rm arch/arm64/boot/Image.gz-dtb
+rm arch/arm/boot/zImage-dtb
 #rm -rf magisk_module/system
 rm -f repack_zip/emp/zImage
 #rm -f repack_zip/emp/*.dtb

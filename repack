@@ -14,7 +14,7 @@ rm -f repack_zip/emp/zImage
     #mkdir magisk_module/system/lib/modules/qca_cld
 #fi
 
-mv arch/arm64/boot/Image.gz-dtb repack_zip/emp/zImage
+mv arch/arm/boot/zImage-dtb repack_zip/emp/zImage
 #find -name "*.ko" -exec mv {} magisk_module/system/lib/modules \;
 #repack_zip/emp/strip --strip-unneeded magisk_module/system/lib/modules/*
 #mv magisk_module/system/lib/modules/wlan.ko magisk_module/system/lib/modules/qca_cld/qca_cld_wlan.ko
