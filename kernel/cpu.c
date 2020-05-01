@@ -3,6 +3,11 @@
  *
  * This code is licenced under the GPL.
  */
+/*
+* This software is contributed or developed by KYOCERA Corporation.
+* (C) 2015 KYOCERA Corporation
+*/
+
 #include <linux/proc_fs.h>
 #include <linux/smp.h>
 #include <linux/init.h>
@@ -23,6 +28,13 @@
 #include <trace/events/sched.h>
 
 #include "smpboot.h"
+
+#ifdef KC_BATTERY_LOG_ENABLED
+#include <linux/clog.h>
+#define KCBLOG(tag, ...)  CLOG(tag, ##__VA_ARGS__)
+#else
+#define KCBLOG(tag, ...) do{}while(0)
+#endif
 
 #ifdef CONFIG_SMP
 /* Serializes the updates to cpu_online_mask, cpu_present_mask */
@@ -318,6 +330,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 	if (!cpu_online(cpu))
 		return -EINVAL;
 
+	KCBLOG("cpu","-cpu%u",cpu);
 	cpu_hotplug_begin();
 
 	err = __cpu_notify(CPU_DOWN_PREPARE | mod, hcpu, -1, &nr_calls);
@@ -393,6 +406,7 @@ static int __cpuinit _cpu_up(unsigned int cpu, int tasks_frozen)
 	unsigned long mod = tasks_frozen ? CPU_TASKS_FROZEN : 0;
 	struct task_struct *idle;
 
+	KCBLOG("cpu","+cpu%u",cpu);
 	cpu_hotplug_begin();
 
 	if (cpu_online(cpu) || !cpu_present(cpu)) {

@@ -5,6 +5,10 @@
  *
  * Copyright (C) 2012 Rafael J. Wysocki <rjw@sisk.pl>
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2013 KYOCERA Corporation
+ */
 
 #include <linux/device.h>
 #include <linux/mutex.h>
@@ -51,6 +55,7 @@ static void try_to_suspend(struct work_struct *work)
 
 	if (!pm_get_wakeup_count(&final_count, false))
 		goto out;
+	pr_info("checkpoint: %s: return from pm_get_wakeup_count/true\n", __func__);
 
 	/*
 	 * If the wakeup occured for an unknown reason, wait to prevent the

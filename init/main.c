@@ -8,6 +8,10 @@
  *  Moan early if gcc is old, avoiding bogus kernels - Paul Gortmaker, May '96
  *  Simplified starting of init:  Michael A. Griffith <grif@acm.org> 
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2013 KYOCERA Corporation
+ */
 
 #define DEBUG		/* Enable initcall_debug */
 
@@ -472,10 +476,17 @@ static void __init mm_init(void)
 	vmalloc_init();
 }
 
+#define SCLK_HZ (32768)
+extern long sclk_at_entry;
+
 asmlinkage void __init start_kernel(void)
 {
 	char * command_line;
 	extern const struct kernel_param __start___param[], __stop___param[];
+	unsigned int sclk_ms;
+
+	sclk_ms = sclk_at_entry * 1000 / SCLK_HZ;
+	pr_info("checkpoint: Kernel startup entry point sclk_time=%ums\n", sclk_ms);
 
 	/*
 	 * Need to run as early as possible, to initialize the
@@ -639,6 +650,21 @@ asmlinkage void __init start_kernel(void)
 		efi_free_boot_services();
 	}
 
+	{
+		long *sclk_addr;
+		long tmp;
+		sclk_addr = (long *)ioremap(0x4a3000, 4);
+		if (sclk_addr) {
+			tmp = *sclk_addr;
+			iounmap(sclk_addr);
+			sclk_ms = tmp * 1000 / SCLK_HZ;
+			pr_info("checkpoint: start_kernel before rest_init sclk_time=%ums\n", sclk_ms);
+		}
+		else {
+			pr_info("checkpoint: start_kernel before rest_init\n");
+		}
+	}
+
 	ftrace_init();
 
 	/* Do the rest non-__init'ed, we're now alive */
@@ -773,6 +799,7 @@ static void __init do_initcalls(void)
  */
 static void __init do_basic_setup(void)
 {
+	pr_info("checkpoint: do_basic_setup begin\n");
 	cpuset_init_smp();
 	usermodehelper_init();
 	shmem_init();
@@ -782,6 +809,7 @@ static void __init do_basic_setup(void)
 	usermodehelper_enable();
 	do_initcalls();
 	random_int_secret_init();
+	pr_info("checkpoint: do_basic_setup end\n");
 }
 
 static void __init do_pre_smp_initcalls(void)

@@ -4,6 +4,10 @@
  *
  * Originally from swsusp.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2013 KYOCERA Corporation
+ */
 
 
 #undef DEBUG
@@ -127,7 +131,7 @@ int freeze_processes(void)
 	pm_freezing = true;
 	error = try_to_freeze_tasks(true);
 	if (!error) {
-		printk("done.");
+		printk("checkpoint: done.");
 		__usermodehelper_set_disable_depth(UMH_DISABLED);
 		oom_killer_disable();
 	}
@@ -189,7 +193,7 @@ void thaw_processes(void)
 	usermodehelper_enable();
 
 	schedule();
-	printk("done.\n");
+	printk("checkpoint: restarting tasks done.\n");
 }
 
 void thaw_kernel_threads(void)

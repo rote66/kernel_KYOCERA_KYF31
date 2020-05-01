@@ -2,6 +2,10 @@
    Copyright (C) 2002 Richard Henderson
    Copyright (C) 2001 Rusty Russell, 2002, 2010 Rusty Russell IBM.
 
+   This software is contributed or developed by KYOCERA Corporation.
+   (C) 2014 KYOCERA Corporation
+   (C) 2015 KYOCERA Corporation
+
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
@@ -2678,6 +2682,10 @@ static struct module *setup_load_info(struct load_info *info, int flags)
 	}
 	/* This is temporary: point mod into copy of data. */
 	mod = (void *)info->sechdrs[info->index.mod].sh_addr;
+
+	err = security_kernel_setup_load_info(mod->name);
+	if (err)
+		return ERR_PTR(-ENOEXEC);
 
 	if (info->index.sym == 0) {
 		printk(KERN_WARNING "%s: module has no symbols (stripped?)\n",

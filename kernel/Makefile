@@ -1,6 +1,11 @@
 #
 # Makefile for the linux kernel.
 #
+#
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2015 KYOCERA Corporation
+# (C) 2016 KYOCERA Corporation
+#
 
 obj-y     = fork.o exec_domain.o panic.o printk.o \
 	    cpu.o exit.o itimer.o time.o softirq.o resource.o \
@@ -11,6 +16,10 @@ obj-y     = fork.o exec_domain.o panic.o printk.o \
 	    hrtimer.o rwsem.o nsproxy.o semaphore.o \
 	    notifier.o ksysfs.o cred.o \
 	    async.o range.o groups.o lglock.o smpboot.o
+
+ifeq ($(KC_DEBUGTOOL_ENABLED_EXPORT), enable)
+CFLAGS_cpu.o += -DKC_BATTERY_LOG_ENABLED
+endif
 
 ifdef CONFIG_FUNCTION_TRACER
 # Do not trace debug files and internal ftrace files

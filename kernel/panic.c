@@ -8,6 +8,11 @@
  * This function is used through-out the kernel (including mm and fs)
  * to indicate a major problem.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
+
 #include <linux/debug_locks.h>
 #include <linux/interrupt.h>
 #include <linux/kmsg_dump.h>
@@ -22,6 +27,7 @@
 #include <linux/sysrq.h>
 #include <linux/init.h>
 #include <linux/nmi.h>
+#include <linux/kcjlog.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/exception.h>
@@ -117,6 +123,7 @@ void panic(const char *fmt, ...)
 	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
 		dump_stack();
 #endif
+	 set_smem_panic_info_data((const char *)buf);
 
 	/*
 	 * If we have crashed and we have a crash kernel loaded let it handle
@@ -166,7 +173,8 @@ void panic(const char *fmt, ...)
 		 * shutting down.  But if there is a chance of
 		 * rebooting the system it will be rebooted.
 		 */
-		emergency_restart();
+		printk(KERN_ERR "Kernel panic - exec machine_restart()\n");
+		machine_restart("kernel_panic");
 	}
 #ifdef __sparc__
 	{
