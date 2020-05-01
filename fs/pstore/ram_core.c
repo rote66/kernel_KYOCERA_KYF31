@@ -11,6 +11,11 @@
  * GNU General Public License for more details.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/device.h>
 #include <linux/err.h>
@@ -333,6 +338,7 @@ void persistent_ram_zap(struct persistent_ram_zone *prz)
 	persistent_ram_update_header_ecc(prz);
 }
 
+#ifndef CONFIG_MSM_UNINIT_RAM
 static void *persistent_ram_vmap(phys_addr_t start, size_t size)
 {
 	struct page **pages;
@@ -374,10 +380,12 @@ static void *persistent_ram_iomap(phys_addr_t start, size_t size)
 
 	return ioremap(start, size);
 }
+#endif /* CONFIG_MSM_UNINIT_RAM */
 
 static int persistent_ram_buffer_map(phys_addr_t start, phys_addr_t size,
 		struct persistent_ram_zone *prz)
 {
+#ifndef CONFIG_MSM_UNINIT_RAM
 	prz->paddr = start;
 	prz->size = size;
 
@@ -394,7 +402,10 @@ static int persistent_ram_buffer_map(phys_addr_t start, phys_addr_t size,
 
 	prz->buffer = prz->vaddr + offset_in_page(start);
 	prz->buffer_size = size - sizeof(struct persistent_ram_buffer);
-
+#else /* CONFIG_MSM_UNINIT_RAM */
+	prz->buffer = (struct persistent_ram_buffer *)start;
+	prz->buffer_size = size - sizeof(struct persistent_ram_buffer);
+#endif /* CONFIG_MSM_UNINIT_RAM */
 	return 0;
 }
 
@@ -439,12 +450,14 @@ void persistent_ram_free(struct persistent_ram_zone *prz)
 		return;
 
 	if (prz->vaddr) {
+#ifndef CONFIG_MSM_UNINIT_RAM
 		if (pfn_valid(prz->paddr >> PAGE_SHIFT)) {
 			vunmap(prz->vaddr);
 		} else {
 			iounmap(prz->vaddr);
 			release_mem_region(prz->paddr, prz->size);
 		}
+#endif /* CONFIG_MSM_UNINIT_RAM */
 		prz->vaddr = NULL;
 	}
 	persistent_ram_free_old(prz);

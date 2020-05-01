@@ -17,6 +17,11 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/atomic.h>
 #include <linux/types.h>
@@ -73,6 +78,7 @@ void pstore_set_kmsg_bytes(int bytes)
 	kmsg_bytes = bytes;
 }
 
+#ifndef CONFIG_NOT_USE_PSTOREDUMP
 /* Tag each group of saved records with a sequence number */
 static int	oopscount;
 
@@ -95,6 +101,7 @@ static const char *get_reason_str(enum kmsg_dump_reason reason)
 		return "Unknown";
 	}
 }
+#endif /* CONFIG_NOT_USE_PSTOREDUMP */
 
 bool pstore_cannot_block_path(enum kmsg_dump_reason reason)
 {
@@ -117,6 +124,7 @@ bool pstore_cannot_block_path(enum kmsg_dump_reason reason)
 }
 EXPORT_SYMBOL_GPL(pstore_cannot_block_path);
 
+#ifndef CONFIG_NOT_USE_PSTOREDUMP
 /*
  * callback from kmsg_dump. (s2,l2) has the most recently
  * written bytes, older bytes are in (s1,l1). Save as much
@@ -176,6 +184,7 @@ static void pstore_dump(struct kmsg_dumper *dumper,
 static struct kmsg_dumper pstore_dumper = {
 	.dump = pstore_dump,
 };
+#endif /* CONFIG_NOT_USE_PSTOREDUMP */
 
 #ifdef CONFIG_PSTORE_CONSOLE
 static void pstore_console_write(struct console *con, const char *s, unsigned c)
@@ -264,7 +273,9 @@ int pstore_register(struct pstore_info *psi)
 	if (pstore_is_mounted())
 		pstore_get_records(0);
 
+#ifndef CONFIG_NOT_USE_PSTOREDUMP
 	kmsg_dump_register(&pstore_dumper);
+#endif /* CONFIG_NOT_USE_PSTOREDUMP */
 	pstore_register_console();
 	pstore_register_ftrace();
 

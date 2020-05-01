@@ -1,3 +1,8 @@
+#
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2015 KYOCERA Corporation
+#
+
 config PSTORE
 	bool "Persistent store support"
 	default n
@@ -48,3 +53,15 @@ config PSTORE_RAM
 	  "ramoops.ko".
 
 	  For more information, see Documentation/ramoops.txt.
+
+config MSM_UNINIT_RAM
+	bool "Use msm uninit ram"
+	default n
+	help
+	  When the option is enabled, use virtual msm uninit ram.
+
+config NOT_USE_PSTOREDUMP
+	bool "not use pstore dump"
+	default n
+	help
+	  When the option is enabled, not use pstore dump.
