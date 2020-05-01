@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #ifndef __BMS_BATTERYDATA_H
 #define __BMS_BATTERYDATA_H
@@ -16,15 +20,15 @@
 #include <linux/errno.h>
 
 #define FCC_CC_COLS		5
-#define FCC_TEMP_COLS		8
+#define FCC_TEMP_COLS		10
 
 #define PC_CC_ROWS             31
 #define PC_CC_COLS             13
 
 #define PC_TEMP_ROWS		31
-#define PC_TEMP_COLS		8
+#define PC_TEMP_COLS		10
 
-#define ACC_IBAT_ROWS		4
+#define ACC_IBAT_ROWS		6
 #define ACC_TEMP_COLS		3
 
 #define MAX_SINGLE_LUT_COLS	20

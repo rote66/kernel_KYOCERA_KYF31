@@ -1,5 +1,14 @@
 #ifndef _GPIO_KEYS_H
 #define _GPIO_KEYS_H
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
+
+#define SATE_BIT_NUM  2
 
 struct device;
 
@@ -15,6 +24,10 @@ struct gpio_keys_button {
 	bool can_disable;
 	int value;		/* axis value for EV_ABS */
 	unsigned int irq;	/* Irq number in case of interrupt keys */
+    unsigned int on_chattering_num:SATE_BIT_NUM;
+    unsigned int off_chattering_num:SATE_BIT_NUM;
+	unsigned int on_cnt:SATE_BIT_NUM;
+	unsigned int off_cnt:SATE_BIT_NUM;
 };
 
 struct gpio_keys_platform_data {
@@ -27,5 +40,7 @@ struct gpio_keys_platform_data {
 	void (*disable)(struct device *dev);
 	const char *name;		/* input device name */
 };
+
+extern bool gpio_keys_is_stateon(unsigned int code);
 
 #endif

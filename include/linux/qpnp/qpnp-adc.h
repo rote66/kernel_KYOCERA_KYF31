@@ -14,6 +14,10 @@
  * Qualcomm PMIC QPNP ADC driver header file
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #ifndef __QPNP_ADC_H
 #define __QPNP_ADC_H
@@ -276,6 +280,7 @@ enum qpnp_adc_scale_fn_type {
 	SCALE_QRD_SKUC_BATT_THERM,
 	SCALE_QRD_SKUE_BATT_THERM,
 	SCALE_QRD_SKUL_BATT_THERM,
+	SCALE_THERM_OEM_NONPULL,
 	SCALE_NONE,
 };
 
@@ -1691,6 +1696,23 @@ int32_t qpnp_vadc_calib_gnd(struct qpnp_vadc_chip *vadc,
 				enum qpnp_adc_calib_type calib_type,
 				int *calib_data);
 
+/**
+ * oem_adc_scale_therm_nonpull() - Scales the pre-calibrated digital output
+ *		of an ADC to the ADC reference and compensates for the
+ *		gain and offset. Returns the temperature of the therm in degC.
+ *		It uses a mapping table computed for a non pull-up.
+ * @adc_code:	pre-calibrated digital ouput of the ADC.
+ * @adc_prop:	adc properties of the pm8xxx adc such as bit resolution,
+ *		reference voltage.
+ * @chan_prop:	individual channel properties to compensate the i/p scaling,
+ *		slope and offset.
+ * @chan_rslt:	physical result to be stored.
+ */
+int32_t oem_adc_scale_therm_nonpull(struct qpnp_vadc_chip *chip,
+			int32_t adc_code,
+			const struct qpnp_adc_properties *adc_prop,
+			const struct qpnp_vadc_chan_properties *chan_prop,
+			struct qpnp_vadc_result *chan_rslt);
 #else
 static inline int32_t qpnp_vadc_read(struct qpnp_vadc_chip *dev,
 				uint32_t channel,
@@ -1870,7 +1892,12 @@ static int32_t qpnp_vadc_calib_gnd(struct qpnp_vadc_chip *vadc,
 					enum qpnp_adc_calib_type calib_type,
 					int *calib_data)
 { return -ENXIO; }
-
+static inline int32_t oem_adc_scale_therm_nonpull(struct qpnp_vadc_chip *chip,
+			int32_t adc_code,
+			const struct qpnp_adc_properties *adc_prop,
+			const struct qpnp_vadc_chan_properties *chan_prop,
+			struct qpnp_vadc_result *chan_rslt)
+{ return -ENXIO; }
 #endif
 
 /* Public API */

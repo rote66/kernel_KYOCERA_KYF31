@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+
 #ifndef __INCLUDE_LINUX_OOM_H
 #define __INCLUDE_LINUX_OOM_H
 
@@ -86,6 +91,13 @@ extern struct task_struct *find_lock_task_mm(struct task_struct *p);
 
 extern void dump_tasks(const struct mem_cgroup *memcg,
 		const nodemask_t *nodemask);
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+extern void dump_tasks_lmk_mon(const struct mem_cgroup *memcg,
+		const nodemask_t *nodemask, void *logfunc);
+#else
+static inline void dump_tasks_lmk_mon(const struct mem_cgroup *memcg,
+		const nodemask_t *nodemask, void *logfunc) {}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 /* sysctls */
 extern int sysctl_oom_dump_tasks;

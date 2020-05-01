@@ -7,6 +7,11 @@
  *
  *  Card driver specific definitions.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
+
 #ifndef LINUX_MMC_CARD_H
 #define LINUX_MMC_CARD_H
 
@@ -44,6 +49,8 @@ struct mmc_csd {
 				read_misalign:1,
 				write_partial:1,
 				write_misalign:1;
+	unsigned int		perm_write_protect;
+	unsigned int		tmp_write_protect;
 };
 
 struct mmc_ext_csd {
@@ -132,12 +139,12 @@ struct sd_ssr {
 struct sd_switch_caps {
 	unsigned int		hs_max_dtr;
 	unsigned int		uhs_max_dtr;
-#define HIGH_SPEED_MAX_DTR	50000000
+#define HIGH_SPEED_MAX_DTR	48000000
 #define UHS_SDR104_MAX_DTR	208000000
 #define UHS_SDR50_MAX_DTR	100000000
-#define UHS_DDR50_MAX_DTR	50000000
+#define UHS_DDR50_MAX_DTR	48000000
 #define UHS_SDR25_MAX_DTR	UHS_DDR50_MAX_DTR
-#define UHS_SDR12_MAX_DTR	25000000
+#define UHS_SDR12_MAX_DTR	24000000
 	unsigned int		sd3_bus_mode;
 #define UHS_SDR12_BUS_SPEED	0
 #define HIGH_SPEED_BUS_SPEED	1

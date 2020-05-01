@@ -23,6 +23,11 @@
 
 /* With some changes from Kyösti Mälkki <kmalkki@cc.hut.fi> and
    Frodo Looijaard <frodol@dds.nl> */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 #ifndef _LINUX_I2C_H
 #define _LINUX_I2C_H
 
@@ -50,6 +55,14 @@ struct i2c_board_info;
 struct module;
 
 #if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
+extern void i2c_reset_S7780A(struct i2c_adapter *adap);
+extern void i2c_reset_device(struct i2c_adapter *adap, bool init_flg);
+extern int i2c_pinctrl_set_default(struct i2c_adapter *adap);
+extern int i2c_pinctrl_set_active(struct i2c_adapter *adap);
+extern int i2c_pinctrl_set_sleep(struct i2c_adapter *adap);
+extern int i2c_clk_prepare_enable(struct i2c_adapter *adap);
+extern void i2c_clk_disable_unprepare(struct i2c_adapter *adap);
+
 /*
  * The master routines are the ones normally used to transmit data to devices
  * on a bus (or read from them). Apart from two basic transfer functions to
@@ -362,6 +375,12 @@ struct i2c_algorithm {
 	int (*smbus_xfer) (struct i2c_adapter *adap, u16 addr,
 			   unsigned short flags, char read_write,
 			   u8 command, int size, union i2c_smbus_data *data);
+	int (*compulsory_reset)(struct i2c_adapter *adap, bool init_flg);
+	int (*pinctrl_set_default)(struct i2c_adapter *adap);
+	int (*pinctrl_set_active)(struct i2c_adapter *adap);
+	int (*pinctrl_set_sleep)(struct i2c_adapter *adap);
+	int (*clk_vote_prepare_enable)(struct i2c_adapter *adap);
+	void (*clk_unvote_disable_unprepare)(struct i2c_adapter *adap);
 
 	/* To determine what the adapter supports */
 	u32 (*functionality) (struct i2c_adapter *);

@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #ifndef _ARCH_ARM_MACH_MSM_SMEM_H_
 #define _ARCH_ARM_MACH_MSM_SMEM_H_
@@ -170,7 +174,45 @@ enum {
 	SMEM_GLINK_NATIVE_XPRT_FIFO_1, /* 480 */
 	SMEM_SMP2P_SENSOR_BASE, /* 481 */
 	SMEM_NUM_ITEMS = SMEM_SMP2P_SENSOR_BASE + 8, /* 489 */
+
+	SMEM_KCC_BASE         = 500,
+	SMEM_CHG_PARAM               = SMEM_KCC_BASE + 1,
+	SMEM_KERR_LOG                = SMEM_KCC_BASE + 2,
+	SMEM_CRASH_LOG               = SMEM_KCC_BASE + 3,
+	SMEM_FACTORY_CMDLINE         = SMEM_KCC_BASE + 4,
+	SMEM_FACTORY_OPTIONS         = SMEM_KCC_BASE + 5,
+	SMEM_DDR_DATA_INFO           = SMEM_KCC_BASE + 6,
+	SMEM_KC_WM_UUID              = SMEM_KCC_BASE + 7,
+	SMEM_SECUREBOOT_FLAG         = SMEM_KCC_BASE + 8,
+	SMEM_BFSS_DATA               = SMEM_KCC_BASE + 9,
+	SMEM_KC_POWER_ON_STATUS_INFO = SMEM_KCC_BASE + 10,
+	SMEM_BOOT_PW_ON_CHECK        = SMEM_KCC_BASE + 11,
+	SMEM_HW_ID                   = SMEM_KCC_BASE + 12,
+	SMEM_VENDOR_ID               = SMEM_KCC_BASE + 13,
+	SMEM_IMEI                    = SMEM_KCC_BASE + 14,
+	SMEM_NFC_RFS_SIG_STATE       = SMEM_KCC_BASE + 15,
+	SMEM_UICC_INFO               = SMEM_KCC_BASE + 16,
+	SMEM_SDDL_FLAG               = SMEM_KCC_BASE + 17,
 };
+
+#define KCC_SMEM_CHG_PARAM_SIZE                200
+#define KCC_SMEM_KERR_LOG_SIZE                 1024
+#define KCC_SMEM_CRASH_LOG_SIZE                1024
+#define KCC_SMEM_FACTORY_CMDLINE_SIZE          1024
+#define KCC_SMEM_FACTORY_OPTIONS_SIZE          4
+#define KCC_SMEM_DDR_DATA_INFO_SIZE            8
+#define KCC_SMEM_KC_WM_UUID_SIZE               6
+#define KCC_SMEM_SECUREBOOT_FLAG_SIZE          4
+#define KCC_SMEM_BFSS_DATA_SIZE                65536
+#define KCC_SMEM_KC_POWER_ON_STATUS_INFO_SIZE  8
+#define KCC_SMEM_BOOT_PW_ON_CHECK_SIZE         8
+#define KCC_SMEM_HW_ID_SIZE                    4
+#define KCC_SMEM_VENDOR_ID_SIZE                4
+#define KCC_SMEM_IMEI_SIZE                     9
+#define KCC_SMEM_NFC_RFS_SIG_STATE_SIZE        1
+#define KCC_SMEM_UICC_INFO_SIZE                2
+#define KCC_SMEM_SDDL_FLAG_SIZE                16
+
 
 #ifdef CONFIG_MSM_SMEM
 void *smem_alloc(unsigned id, unsigned size_in, unsigned to_proc,
@@ -214,6 +256,8 @@ phys_addr_t smem_virt_to_phys(void *smem_address);
  */
 int __init msm_smem_init(void);
 
+void *kc_smem_alloc(unsigned id, unsigned buf_size);
+
 #else
 static inline void *smem_alloc(unsigned id, unsigned size_in, unsigned to_proc,
 								unsigned flags)
@@ -242,6 +286,10 @@ static inline phys_addr_t smem_virt_to_phys(void *smem_address)
 static inline int __init msm_smem_init(void)
 {
 	return 0;
+}
+static inline void *kc_smem_alloc(unsigned id, unsigned buf_size)
+{
+	return NULL;
 }
 #endif /* CONFIG_MSM_SMEM  */
 #endif /* _ARCH_ARM_MACH_MSM_SMEM_H_ */

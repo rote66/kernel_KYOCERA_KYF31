@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
+/*
  *  Advanced Linux Sound Architecture - ALSA - Driver
  *  Copyright (c) 1994-2003 by Jaroslav Kysela <perex@perex.cz>,
  *                             Abramo Bagnara <abramo@alsa-project.org>
@@ -24,7 +28,9 @@
 #define _UAPI__SOUND_ASOUND_H
 
 #include <linux/types.h>
-
+#ifndef CONFIG_KYOCERA_MSND
+#define CONFIG_KYOCERA_MSND
+#endif
 
 /*
  *  protocol version
@@ -902,6 +908,13 @@ struct snd_ctl_tlv {
 	unsigned int tlv[0];	/* first TLV */
 };
 
+#ifdef CONFIG_KYOCERA_MSND
+struct snd_ctl_kaudio_test {
+	unsigned short	cmd;
+	unsigned int	prm;
+};
+#endif /* CONFIG_KYOCERA_MSND */
+
 #define SNDRV_CTL_IOCTL_PVERSION	_IOR('U', 0x00, int)
 #define SNDRV_CTL_IOCTL_CARD_INFO	_IOR('U', 0x01, struct snd_ctl_card_info)
 #define SNDRV_CTL_IOCTL_ELEM_LIST	_IOWR('U', 0x10, struct snd_ctl_elem_list)
@@ -927,6 +940,9 @@ struct snd_ctl_tlv {
 #define SNDRV_CTL_IOCTL_RAWMIDI_PREFER_SUBDEVICE _IOW('U', 0x42, int)
 #define SNDRV_CTL_IOCTL_POWER		_IOWR('U', 0xd0, int)
 #define SNDRV_CTL_IOCTL_POWER_STATE	_IOR('U', 0xd1, int)
+#ifdef CONFIG_KYOCERA_MSND
+#define SNDRV_CTL_IOCTL_KAUDIO_TEST	_IOWR('U', 0xe0, struct snd_ctl_kaudio_test)
+#endif /* CONFIG_KYOCERA_MSND */
 
 /*
  *  Read interface.

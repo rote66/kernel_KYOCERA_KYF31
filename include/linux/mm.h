@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+
 #ifndef _LINUX_MM_H
 #define _LINUX_MM_H
 
@@ -929,6 +934,9 @@ extern void pagefault_out_of_memory(void);
 #define SHOW_MEM_FILTER_PAGE_COUNT	(0x0002u)	/* page type count */
 
 extern void show_free_areas(unsigned int flags);
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+extern void show_free_areas_lmk_mon(unsigned int flags, void *logfunc);
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 extern bool skip_free_areas_node(unsigned int flags, int nid);
 
 void shmem_set_file(struct vm_area_struct *vma, struct file *file);
@@ -1456,6 +1464,11 @@ extern int __meminit init_per_zone_wmark_min(void);
 extern void mem_init(void);
 extern void __init mmap_init(void);
 extern void show_mem(unsigned int flags);
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+extern void show_mem_lmk_mon(unsigned int flags, void *logfunc);
+#else
+static inline void show_mem_lmk_mon(unsigned int flags, void *logfunc) {}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 extern void si_meminfo(struct sysinfo * val);
 extern void si_meminfo_node(struct sysinfo *val, int nid);
 
@@ -1734,7 +1747,7 @@ static inline struct page *follow_page(struct vm_area_struct *vma,
 #define FOLL_HWPOISON	0x100	/* check page is hwpoisoned */
 #define FOLL_NUMA	0x200	/* force NUMA hinting page fault */
 #define FOLL_MIGRATION	0x400	/* wait for page to replace migration entry */
-
+#define FOLL_COW        0x4000  /* internal GUP flag */
 typedef int (*pte_fn_t)(pte_t *pte, pgtable_t token, unsigned long addr,
 			void *data);
 extern int apply_to_page_range(struct mm_struct *mm, unsigned long address,

@@ -13,6 +13,10 @@
 /*
  * I2C controller driver for Qualcomm Technologies Inc platforms
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #ifndef _I2C_MSM_V2_H
 #define _I2C_MSM_V2_H
@@ -463,12 +467,16 @@ struct i2c_msm_resources {
 	int                          irq;
 	bool                         disable_dma;
 	struct pinctrl              *pinctrl;
+	struct pinctrl_state        *gpio_state_default;
 	struct pinctrl_state        *gpio_state_active;
 	struct pinctrl_state        *gpio_state_suspend;
+	struct pinctrl_state        *gpio_state_gpio;
 };
 
+#define I2C_MSM_PINCTRL_DEFAULT      "i2c_default"
 #define I2C_MSM_PINCTRL_ACTIVE       "i2c_active"
 #define I2C_MSM_PINCTRL_SUSPEND      "i2c_sleep"
+#define I2C_MSM_PINCTRL_GPIO         "i2c_gpio"
 
 /*
  * i2c_msm_xfer_buf: current xfer position and preprocessed tags

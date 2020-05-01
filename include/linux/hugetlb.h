@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+
 #ifndef _LINUX_HUGETLB_H
 #define _LINUX_HUGETLB_H
 
@@ -60,6 +65,9 @@ int hugetlb_prefault(struct address_space *, struct vm_area_struct *);
 void hugetlb_report_meminfo(struct seq_file *);
 int hugetlb_report_node_meminfo(int, char *);
 void hugetlb_show_meminfo(void);
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+void hugetlb_show_meminfo_lmk_mon(void *logfunc);
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 unsigned long hugetlb_total_pages(void);
 int hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 			unsigned long address, unsigned int flags);
@@ -124,6 +132,9 @@ static inline void hugetlb_report_meminfo(struct seq_file *m)
 static inline void hugetlb_show_meminfo(void)
 {
 }
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+static inline void hugetlb_show_meminfo_lmk_mon(void *logfunc)	{}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 #define follow_huge_pmd(mm, addr, pmd, write)	NULL
 #define follow_huge_pud(mm, addr, pud, write)	NULL
 #define prepare_hugepage_range(file, addr, len)	(-EINVAL)

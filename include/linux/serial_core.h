@@ -17,6 +17,14 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+/*
+ *This software is contributed or developed by KYOCERA Corporation.
+ *(C) 2012 KYOCERA Corporation
+ *(C) 2013 KYOCERA Corporation
+ *(C) 2014 KYOCERA Corporation
+ *(C) 2015 KYOCERA Corporation
+ */
+
 #ifndef LINUX_SERIAL_CORE_H
 #define LINUX_SERIAL_CORE_H
 
@@ -30,6 +38,12 @@
 #include <linux/mutex.h>
 #include <linux/sysrq.h>
 #include <uapi/linux/serial_core.h>
+
+#define FEATURE_KC_UART_WRITE_SYNC
+
+#ifdef FEATURE_KC_UART_WRITE_SYNC
+#define FEATURE_KC_UART_WRITE_SYNC2
+#endif /* FEATURE_KC_UART_WRITE_SYNC */
 
 struct uart_port;
 struct serial_struct;
@@ -86,6 +100,9 @@ struct uart_ops {
 	void		(*poll_put_char)(struct uart_port *, unsigned char);
 	int		(*poll_get_char)(struct uart_port *);
 #endif
+#ifdef FEATURE_KC_UART_WRITE_SYNC
+	unsigned int	(*tx_empty_hsl_k)(struct uart_port *);
+#endif /* FEATURE_KC_UART_WRITE_SYNC */
 };
 
 #define NO_POLL_CHAR		0x00ff0000
@@ -256,6 +273,18 @@ struct uart_driver {
 	struct uart_state	*state;
 	struct tty_driver	*tty_driver;
 };
+
+#ifdef FEATURE_KC_UART_WRITE_SYNC
+typedef enum {
+	TRANS_OFF,
+	TRANS_ON,
+	TRANS_TIMEOUT,
+} uart_trans_sync_c;
+#endif /* FEATURE_KC_UART_WRITE_SYNC */
+
+#ifdef FEATURE_KC_UART_WRITE_SYNC2
+void uart_stop_tx_hsl2(void);
+#endif /* FEATURE_KC_UART_WRITE_SYNC2 */
 
 void uart_write_wakeup(struct uart_port *port);
 

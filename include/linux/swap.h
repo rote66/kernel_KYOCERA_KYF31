@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+
 #ifndef _LINUX_SWAP_H
 #define _LINUX_SWAP_H
 
@@ -347,6 +352,9 @@ extern struct address_space swapper_spaces[];
 #define swap_address_space(entry) (&swapper_spaces[swp_type(entry)])
 extern unsigned long total_swapcache_pages(void);
 extern void show_swap_cache_info(void);
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+extern void show_swap_cache_info_lmk_mon(void *logfunc);
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 extern int add_to_swap(struct page *, struct list_head *list);
 extern int add_to_swap_cache(struct page *, swp_entry_t, gfp_t);
 extern int __add_to_swap_cache(struct page *page, swp_entry_t entry);
@@ -432,6 +440,9 @@ mem_cgroup_uncharge_swapcache(struct page *page, swp_entry_t ent, bool swapout)
 static inline void show_swap_cache_info(void)
 {
 }
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+static inline void show_swap_cache_info_lmk_mon(void *logfunc)	{}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 #define free_swap_and_cache(swp)	is_migration_entry(swp)
 #define swapcache_prepare(swp)		is_migration_entry(swp)

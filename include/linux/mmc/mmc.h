@@ -20,6 +20,10 @@
  * Author:  Andrew Christian
  *          15 May 2002
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
 
 #ifndef LINUX_MMC_MMC_H
 #define LINUX_MMC_MMC_H
@@ -371,5 +375,11 @@ struct _mmc_csd {
 #define MMC_SWITCH_MODE_SET_BITS	0x01	/* Set bits which are 1 in value */
 #define MMC_SWITCH_MODE_CLEAR_BITS	0x02	/* Clear bits which are 1 in value */
 #define MMC_SWITCH_MODE_WRITE_BYTE	0x03	/* Set target to value */
+
+#define SDC_SDCARD_LOG_EMMC           (1 << 0)
+#define SDC_SDCARD_LOG_SD             (1 << 1)
+#define SDC_SDCARD_LOG_MASK           0x1F
+#define SDC_SDCARD_LOG(k)             ((mmc_log & SDC_SDCARD_LOG_MASK) & k)
+extern unsigned long mmc_log;
 
 #endif /* LINUX_MMC_MMC_H */
