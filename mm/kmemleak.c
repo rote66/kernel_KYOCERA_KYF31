@@ -60,6 +60,11 @@
  * function must be protected by rcu_read_lock() to avoid accessing a freed
  * structure.
  */
+/*
+This software is contributed or developed by KYOCERA Corporation.
+(C) 2015 KYOCERA Corporation
+(C) 2016 KYOCERA Corporation
+*/
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
@@ -1588,6 +1593,67 @@ static int dump_str_object_info(const char *str)
 	return 0;
 }
 
+static int dump_str_object_info_range(unsigned long min, unsigned long max)
+{
+	struct rb_node *rb;
+	struct kmemleak_object *object;
+	unsigned long flags;
+	int cnt = 0;
+
+	rcu_read_lock();
+	read_lock_irqsave(&kmemleak_lock, flags);
+
+	pr_info("===== dump_str_object_info_range begin min=%lu max=%lu\n", min, max);
+	rb = rb_first(&object_tree_root);
+	while (rb) {
+		object = rb_entry(rb, struct kmemleak_object, rb_node);
+
+		if( min < object->size && object->size <= max )
+		{
+			dump_object_info(object);
+			cnt++;
+			if( (cnt & 0x3F) == 0 ) {
+				pr_info("----- dump_str_object_info_range ... sleep several msec. cnt=%d\n", cnt);
+				read_unlock_irqrestore(&kmemleak_lock, flags);
+				rcu_read_unlock();
+				msleep(200);
+				rcu_read_lock();
+				read_lock_irqsave(&kmemleak_lock, flags);
+			}
+		}
+		rb = rb_next(rb);
+	}
+	pr_info("===== dump_str_object_info_range end cnt=%d\n", cnt);
+	read_unlock_irqrestore(&kmemleak_lock, flags);
+	rcu_read_unlock();
+
+	return 0;
+}
+
+static int dump_str_object_info_size(const char *str)
+{
+	unsigned long order;
+	unsigned long size;
+
+	size = simple_strtoul(str, NULL, 0);
+
+	order = 1;
+	while(size > (1UL << order)) {
+		order++;
+		if( order > 32 ) {
+			pr_warning("dump_str_object_info_size invalid param.");
+			return 0;
+		}
+	}
+
+	return dump_str_object_info_range((1UL << (order-1)), (1UL << order));
+}
+
+static int dump_str_object_info_all(void)
+{
+	return dump_str_object_info_range(1, ULONG_MAX);
+}
+
 /*
  * We use grey instead of black to ensure we can do future scans on the same
  * objects. If we did not do future scans these black objects could
@@ -1684,6 +1750,10 @@ static ssize_t kmemleak_write(struct file *file, const char __user *user_buf,
 		kmemleak_scan();
 	else if (strncmp(buf, "dump=", 5) == 0)
 		ret = dump_str_object_info(buf + 5);
+	else if (strncmp(buf, "dumpsize=", 9) == 0)
+		ret = dump_str_object_info_size(buf + 9);
+	else if (strncmp(buf, "dumpall", 7) == 0)
+		ret = dump_str_object_info_all();
 	else
 		ret = -EINVAL;
 

@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+/*
  *  linux/mm/oom_kill.c
  * 
  *  Copyright (C)  1998,2000  Rik van Riel
@@ -374,6 +378,47 @@ void dump_tasks(const struct mem_cgroup *memcg, const nodemask_t *nodemask)
 	}
 	rcu_read_unlock();
 }
+
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+void dump_tasks_lmk_mon(const struct mem_cgroup *memcg, const nodemask_t *nodemask, void *logfunc)
+{
+	struct task_struct *p;
+	struct task_struct *task;
+	int (*print_log)(const char *fmt, ...)
+		= (int (*)(const char *fmt, ...))logfunc;
+
+	if (!logfunc) {
+		pr_err("%s: logfunc is Null\n", __func__);
+		return;
+	}
+
+	print_log("[ pid ]   uid  tgid total_vm      rss nr_ptes swapents oom_score_adj name\n");
+	rcu_read_lock();
+	for_each_process(p) {
+		if (oom_unkillable_task(p, memcg, nodemask))
+			continue;
+
+		task = find_lock_task_mm(p);
+		if (!task) {
+			/*
+			 * This is a kthread or all of p's threads have already
+			 * detached their mm's.  There's no need to report
+			 * them; they can't be oom killed anyway.
+			 */
+			continue;
+		}
+
+		print_log("[%5d] %5d %5d %8lu %8lu %7lu %8lu         %5hd %s\n",
+			task->pid, from_kuid(&init_user_ns, task_uid(task)),
+			task->tgid, task->mm->total_vm, get_mm_rss(task->mm),
+			task->mm->nr_ptes,
+			get_mm_counter(task->mm, MM_SWAPENTS),
+			task->signal->oom_score_adj, task->comm);
+		task_unlock(task);
+	}
+	rcu_read_unlock();
+}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 static void dump_header(struct task_struct *p, gfp_t gfp_mask, int order,
 			struct mem_cgroup *memcg, const nodemask_t *nodemask)

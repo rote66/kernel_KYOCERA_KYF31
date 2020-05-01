@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+/*
  *  linux/mm/swap_state.c
  *
  *  Copyright (C) 1991, 1992, 1993, 1994  Linus Torvalds
@@ -73,6 +77,27 @@ void show_swap_cache_info(void)
 		get_nr_swap_pages() << (PAGE_SHIFT - 10));
 	printk("Total swap = %lukB\n", total_swap_pages << (PAGE_SHIFT - 10));
 }
+
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+void show_swap_cache_info_lmk_mon(void *logfunc)
+{
+	int (*print_log)(const char *fmt, ...)
+		= (int (*)(const char *fmt, ...))logfunc;
+
+	if (!logfunc) {
+		pr_err("%s: logfunc is Null\n", __func__);
+		return;
+	}
+
+	print_log("%lu pages in swap cache\n", total_swapcache_pages());
+	print_log("Swap cache stats: add %lu, delete %lu, find %lu/%lu\n",
+		swap_cache_info.add_total, swap_cache_info.del_total,
+		swap_cache_info.find_success, swap_cache_info.find_total);
+	print_log("Free swap  = %ldkB\n",
+		get_nr_swap_pages() << (PAGE_SHIFT - 10));
+	print_log("Total swap = %lukB\n", total_swap_pages << (PAGE_SHIFT - 10));
+}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 /*
  * __add_to_swap_cache resembles add_to_page_cache_locked on swapper_space,

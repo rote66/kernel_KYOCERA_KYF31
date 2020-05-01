@@ -13,6 +13,10 @@
  *  Per cpu hot/cold page lists, bulk allocation, Martin J. Bligh, Sept 2002
  *          (lots of bits borrowed from Ingo Molnar & Andrew Morton)
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/stddef.h>
 #include <linux/mm.h>
@@ -2999,6 +3003,22 @@ static inline void show_node(struct zone *zone)
 		printk("Node %d ", zone_to_nid(zone));
 }
 
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+static inline void show_node_lmk_mon(struct zone *zone, void *logfunc)
+{
+	int (*print_log)(const char *fmt, ...)
+		= (int (*)(const char *fmt, ...))logfunc;
+
+	if (!logfunc) {
+		pr_err("%s: logfunc is Null\n", __func__);
+		return;
+	}
+
+	if (IS_ENABLED(CONFIG_NUMA))
+		print_log("Node %d ", zone_to_nid(zone));
+}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
+
 void si_meminfo(struct sysinfo *val)
 {
 	val->totalram = totalram_pages;
@@ -3079,6 +3099,42 @@ static void show_migration_types(unsigned char type)
 	*p = '\0';
 	printk("(%s) ", tmp);
 }
+
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+static void show_migration_types_lmk_mon(unsigned char type, void *logfunc)
+{
+	static const char types[MIGRATE_TYPES] = {
+		[MIGRATE_UNMOVABLE]	= 'U',
+		[MIGRATE_RECLAIMABLE]	= 'E',
+		[MIGRATE_MOVABLE]	= 'M',
+		[MIGRATE_RESERVE]	= 'R',
+#ifdef CONFIG_CMA
+		[MIGRATE_CMA]		= 'C',
+#endif
+#ifdef CONFIG_MEMORY_ISOLATION
+		[MIGRATE_ISOLATE]	= 'I',
+#endif
+	};
+	char tmp[MIGRATE_TYPES + 1];
+	char *p = tmp;
+	int i;
+	int (*print_log)(const char *fmt, ...)
+		= (int (*)(const char *fmt, ...))logfunc;
+
+	if (!logfunc) {
+		pr_err("%s: logfunc is Null\n", __func__);
+		return;
+	}
+
+	for (i = 0; i < MIGRATE_TYPES; i++) {
+		if (type & (1 << i))
+			*p++ = types[i];
+	}
+
+	*p = '\0';
+	print_log("(%s) ", tmp);
+}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 /*
  * Show free area list (used inside shift_scroll-lock stuff)
@@ -3246,6 +3302,175 @@ void show_free_areas(unsigned int filter)
 
 	show_swap_cache_info();
 }
+
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+void show_free_areas_lmk_mon(unsigned int filter, void *logfunc)
+{
+	int cpu;
+	struct zone *zone;
+	int (*print_log)(const char *fmt, ...)
+		= (int (*)(const char *fmt, ...))logfunc;
+
+	if (!logfunc) {
+		pr_err("%s: logfunc is Null\n", __func__);
+		return;
+	}
+
+	for_each_populated_zone(zone) {
+		if (skip_free_areas_node(filter, zone_to_nid(zone)))
+			continue;
+		show_node_lmk_mon(zone, logfunc);
+		print_log("%s per-cpu:\n", zone->name);
+
+		for_each_online_cpu(cpu) {
+			struct per_cpu_pageset *pageset;
+
+			pageset = per_cpu_ptr(zone->pageset, cpu);
+
+			print_log("CPU %4d: hi:%5d, btch:%4d usd:%4d\n",
+			       cpu, pageset->pcp.high,
+			       pageset->pcp.batch, pageset->pcp.count);
+		}
+	}
+
+	print_log("active_anon:%lu inactive_anon:%lu isolated_anon:%lu\n"
+		" active_file:%lu inactive_file:%lu isolated_file:%lu\n"
+		" unevictable:%lu"
+		" dirty:%lu writeback:%lu unstable:%lu\n"
+		" free:%lu slab_reclaimable:%lu slab_unreclaimable:%lu\n"
+		" mapped:%lu shmem:%lu pagetables:%lu bounce:%lu\n"
+		" free_cma:%lu\n",
+		global_page_state(NR_ACTIVE_ANON),
+		global_page_state(NR_INACTIVE_ANON),
+		global_page_state(NR_ISOLATED_ANON),
+		global_page_state(NR_ACTIVE_FILE),
+		global_page_state(NR_INACTIVE_FILE),
+		global_page_state(NR_ISOLATED_FILE),
+		global_page_state(NR_UNEVICTABLE),
+		global_page_state(NR_FILE_DIRTY),
+		global_page_state(NR_WRITEBACK),
+		global_page_state(NR_UNSTABLE_NFS),
+		global_page_state(NR_FREE_PAGES),
+		global_page_state(NR_SLAB_RECLAIMABLE),
+		global_page_state(NR_SLAB_UNRECLAIMABLE),
+		global_page_state(NR_FILE_MAPPED),
+		global_page_state(NR_SHMEM),
+		global_page_state(NR_PAGETABLE),
+		global_page_state(NR_BOUNCE),
+		global_page_state(NR_FREE_CMA_PAGES));
+
+	for_each_populated_zone(zone) {
+		int i;
+
+		if (skip_free_areas_node(filter, zone_to_nid(zone)))
+			continue;
+		show_node_lmk_mon(zone, logfunc);
+		print_log("%s"
+			" free:%lukB"
+			" min:%lukB"
+			" low:%lukB"
+			" high:%lukB"
+			" active_anon:%lukB"
+			" inactive_anon:%lukB"
+			" active_file:%lukB"
+			" inactive_file:%lukB"
+			" unevictable:%lukB"
+			" isolated(anon):%lukB"
+			" isolated(file):%lukB"
+			" present:%lukB"
+			" managed:%lukB"
+			" mlocked:%lukB"
+			" dirty:%lukB"
+			" writeback:%lukB"
+			" mapped:%lukB"
+			" shmem:%lukB"
+			" slab_reclaimable:%lukB"
+			" slab_unreclaimable:%lukB"
+			" kernel_stack:%lukB"
+			" pagetables:%lukB"
+			" unstable:%lukB"
+			" bounce:%lukB"
+			" free_cma:%lukB"
+			" writeback_tmp:%lukB"
+			" pages_scanned:%lu"
+			" all_unreclaimable? %s"
+			"\n",
+			zone->name,
+			K(zone_page_state(zone, NR_FREE_PAGES)),
+			K(min_wmark_pages(zone)),
+			K(low_wmark_pages(zone)),
+			K(high_wmark_pages(zone)),
+			K(zone_page_state(zone, NR_ACTIVE_ANON)),
+			K(zone_page_state(zone, NR_INACTIVE_ANON)),
+			K(zone_page_state(zone, NR_ACTIVE_FILE)),
+			K(zone_page_state(zone, NR_INACTIVE_FILE)),
+			K(zone_page_state(zone, NR_UNEVICTABLE)),
+			K(zone_page_state(zone, NR_ISOLATED_ANON)),
+			K(zone_page_state(zone, NR_ISOLATED_FILE)),
+			K(zone->present_pages),
+			K(zone->managed_pages),
+			K(zone_page_state(zone, NR_MLOCK)),
+			K(zone_page_state(zone, NR_FILE_DIRTY)),
+			K(zone_page_state(zone, NR_WRITEBACK)),
+			K(zone_page_state(zone, NR_FILE_MAPPED)),
+			K(zone_page_state(zone, NR_SHMEM)),
+			K(zone_page_state(zone, NR_SLAB_RECLAIMABLE)),
+			K(zone_page_state(zone, NR_SLAB_UNRECLAIMABLE)),
+			zone_page_state(zone, NR_KERNEL_STACK) *
+				THREAD_SIZE / 1024,
+			K(zone_page_state(zone, NR_PAGETABLE)),
+			K(zone_page_state(zone, NR_UNSTABLE_NFS)),
+			K(zone_page_state(zone, NR_BOUNCE)),
+			K(zone_page_state(zone, NR_FREE_CMA_PAGES)),
+			K(zone_page_state(zone, NR_WRITEBACK_TEMP)),
+			zone->pages_scanned,
+			(!zone_reclaimable(zone) ? "yes" : "no")
+			);
+		print_log("lowmem_reserve[]:");
+		for (i = 0; i < MAX_NR_ZONES; i++)
+			print_log(" %lu", zone->lowmem_reserve[i]);
+		print_log("\n");
+	}
+
+	for_each_populated_zone(zone) {
+		unsigned long nr[MAX_ORDER], flags, order, total = 0;
+		unsigned char types[MAX_ORDER];
+
+		if (skip_free_areas_node(filter, zone_to_nid(zone)))
+			continue;
+		show_node_lmk_mon(zone, logfunc);
+		print_log("%s: ", zone->name);
+
+		spin_lock_irqsave(&zone->lock, flags);
+		for (order = 0; order < MAX_ORDER; order++) {
+			struct free_area *area = &zone->free_area[order];
+			int type;
+
+			nr[order] = area->nr_free;
+			total += nr[order] << order;
+
+			types[order] = 0;
+			for (type = 0; type < MIGRATE_TYPES; type++) {
+				if (!list_empty(&area->free_list[type]))
+					types[order] |= 1 << type;
+			}
+		}
+		spin_unlock_irqrestore(&zone->lock, flags);
+		for (order = 0; order < MAX_ORDER; order++) {
+			print_log("%lu*%lukB ", nr[order], K(1UL) << order);
+			if (nr[order])
+				show_migration_types_lmk_mon(types[order], logfunc);
+		}
+		print_log("= %lukB\n", K(total));
+	}
+
+	hugetlb_show_meminfo_lmk_mon(logfunc);
+
+	print_log("%ld total pagecache pages\n", global_page_state(NR_FILE_PAGES));
+
+	show_swap_cache_info_lmk_mon(logfunc);
+}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 static void zoneref_set_zone(struct zone *zone, struct zoneref *zoneref)
 {

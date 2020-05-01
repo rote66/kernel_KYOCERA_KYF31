@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+/*
  * Generic hugetlb support.
  * (C) Nadia Yvette Chambers, April 2004
  */
@@ -2178,6 +2182,30 @@ void hugetlb_show_meminfo(void)
 				h->surplus_huge_pages_node[nid],
 				1UL << (huge_page_order(h) + PAGE_SHIFT - 10));
 }
+
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+void hugetlb_show_meminfo_lmk_mon(void *logfunc)
+{
+	struct hstate *h;
+	int nid;
+	int (*print_log)(const char *fmt, ...)
+		= (int (*)(const char *fmt, ...))logfunc;
+
+	if (!logfunc) {
+		pr_err("%s: logfunc is Null\n", __func__);
+		return;
+	}
+
+	for_each_node_state(nid, N_MEMORY)
+		for_each_hstate(h)
+			print_log("Node %d hugepages_total=%u hugepages_free=%u hugepages_surp=%u hugepages_size=%lukB\n",
+				nid,
+				h->nr_huge_pages_node[nid],
+				h->free_huge_pages_node[nid],
+				h->surplus_huge_pages_node[nid],
+				1UL << (huge_page_order(h) + PAGE_SHIFT - 10));
+}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 /* Return the number pages of memory we physically have, in PAGE_SIZE units. */
 unsigned long hugetlb_total_pages(void)
