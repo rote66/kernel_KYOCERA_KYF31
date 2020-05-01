@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -37,6 +42,10 @@
 #include "msm8916-wcd-irq.h"
 #include "msm8x16-wcd.h"
 #include "wcdcal-hwdep.h"
+#ifdef CONFIG_KYOCERA_MSND
+#include <linux/key_dm_driver.h>
+#include <misc/swic/swic.h>
+#endif /* CONFIG_KYOCERA_MSND */
 
 #define WCD_MBHC_JACK_MASK (SND_JACK_HEADSET | SND_JACK_OC_HPHL | \
 			   SND_JACK_OC_HPHR | SND_JACK_LINEOUT | \
@@ -86,9 +95,57 @@ enum wcd_mbhc_cs_mb_en_flag {
 	WCD_MBHC_EN_NONE,
 };
 
+#ifdef CONFIG_KYOCERA_MSND
+static int jack_status = 0;
+
+int wcd_mbhc_get_jack_status(void){
+	return jack_status;
+}
+
+static void wcd_mbhc_set_jack_status(int status, int mask)
+{
+	if( mask & WCD_MBHC_JACK_MASK ){
+		if( status & WCD_MBHC_JACK_MASK ){
+			if(status == SND_JACK_HEADSET){
+				key_dm_driver_set_port(0xF0);
+			}else{
+				key_dm_driver_set_port(0xC0);
+			}
+		}else{
+			key_dm_driver_set_port(0x12);
+		}
+	}
+
+	if( mask & WCD_MBHC_JACK_BUTTON_MASK ){
+		if( status & WCD_MBHC_JACK_BUTTON_MASK ){
+			key_dm_driver_set_port(0x11);
+		}else{
+			key_dm_driver_set_port(0x10);
+		}
+	}
+
+	jack_status	&= ~mask;
+	status		&= mask;
+	jack_status	|= status;
+
+	if (status == SND_JACK_HEADPHONE) {
+		swic_set_mic_exist(false);
+		pr_debug("%s(), set mic_state -> false. \n", __func__);
+	}else if(status == SND_JACK_HEADSET){
+		swic_set_mic_exist(true);
+		pr_debug("%s(), set mic_state -> true. \n", __func__);
+	}
+
+	return;
+}
+#endif /* CONFIG_KYOCERA_MSND */
+
 static void wcd_mbhc_jack_report(struct wcd_mbhc *mbhc,
 				struct snd_soc_jack *jack, int status, int mask)
 {
+#ifdef CONFIG_KYOCERA_MSND
+	wcd_mbhc_set_jack_status( status, mask );
+#endif /* CONFIG_KYOCERA_MSND */
 	snd_soc_jack_report_no_dapm(jack, status, mask);
 }
 
@@ -175,8 +232,10 @@ static void wcd_program_btn_threshold(const struct wcd_mbhc *mbhc, bool micbias)
 
 		reg_val = (course << 5) | (fine << 2);
 		snd_soc_update_bits(codec, reg_addr, 0xFC, reg_val);
+#ifndef CONFIG_KYOCERA_MSND
 		pr_debug("%s: course: %d fine: %d reg_addr: %x reg_val: %x\n",
 				__func__, course, fine, reg_addr, reg_val);
+#endif
 		reg_addr++;
 	}
 }
@@ -711,11 +770,14 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 		 * Headphone to headset shouldn't report headphone
 		 * removal.
 		 */
+#ifdef CONFIG_KYOCERA_MSND
+		if (mbhc->hph_status && mbhc->hph_status != jack_type) {
+#else
 		if (mbhc->mbhc_cfg->detect_extn_cable &&
 		    (mbhc->current_plug == MBHC_PLUG_TYPE_HIGH_HPH ||
 		    jack_type == SND_JACK_LINEOUT) &&
 		    (mbhc->hph_status && mbhc->hph_status != jack_type)) {
-
+#endif
 		if (mbhc->micbias_enable)
 			mbhc->micbias_enable = false;
 
@@ -846,6 +908,9 @@ exit:
 /* To determine if cross connection occured */
 static bool wcd_check_cross_conn(struct wcd_mbhc *mbhc)
 {
+#ifdef CONFIG_KYOCERA_MSND
+	return false;
+#else
 	u16 swap_res;
 	struct snd_soc_codec *codec = mbhc->codec;
 	enum wcd_mbhc_plug_type plug_type = mbhc->current_plug;
@@ -882,6 +947,7 @@ static bool wcd_check_cross_conn(struct wcd_mbhc *mbhc)
 	pr_debug("%s: leave, plug type: %d\n", __func__,  plug_type);
 
 	return (plug_type == MBHC_PLUG_TYPE_GND_MIC_SWAP) ? true : false;
+#endif
 }
 
 static bool wcd_is_special_headset(struct wcd_mbhc *mbhc)
@@ -1223,7 +1289,11 @@ static void wcd_mbhc_detect_plug_type(struct wcd_mbhc *mbhc)
 		if (!result1 && !(result2 & 0x01))
 			plug_type = MBHC_PLUG_TYPE_HEADSET;
 		else if (!result1 && (result2 & 0x01))
+#ifdef CONFIG_KYOCERA_MSND
+			plug_type = MBHC_PLUG_TYPE_HEADPHONE;
+#else
 			plug_type = MBHC_PLUG_TYPE_HIGH_HPH;
+#endif /* CONFIG_KYOCERA_MSND */
 		else {
 			plug_type = MBHC_PLUG_TYPE_INVALID;
 			goto exit;
@@ -1242,7 +1312,9 @@ exit:
 	if (plug_type == MBHC_PLUG_TYPE_HEADSET ||
 			plug_type == MBHC_PLUG_TYPE_HEADPHONE) {
 		wcd_mbhc_find_plug_and_report(mbhc, plug_type);
+#ifndef CONFIG_KYOCERA_MSND
 		wcd_schedule_hs_detect_plug(mbhc, &mbhc->correct_plug_swch);
+#endif /* CONFIG_KYOCERA_MSND */
 	} else {
 		wcd_schedule_hs_detect_plug(mbhc, &mbhc->correct_plug_swch);
 	}
@@ -1278,6 +1350,11 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 	micbias1 = (snd_soc_read(codec, MSM8X16_WCD_A_ANALOG_MICB_1_EN) & 0x80);
 	if ((mbhc->current_plug == MBHC_PLUG_TYPE_NONE) &&
 	    detection_type) {
+#ifdef CONFIG_KYOCERA_MSND
+		snd_soc_update_bits(codec,
+				MSM8X16_WCD_A_ANALOG_MBHC_FSM_CTL,
+				0xB0, 0x00);
+#endif /* CONFIG_KYOCERA_MSND */
 		/* Make sure MASTER_BIAS_CTL is enabled */
 		snd_soc_update_bits(codec,
 				    MSM8X16_WCD_A_ANALOG_MASTER_BIAS_CTL,
@@ -1319,6 +1396,11 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 		snd_soc_update_bits(codec,
 				MSM8X16_WCD_A_ANALOG_MICB_1_EN,
 				0x04, 0x00);
+#ifdef CONFIG_KYOCERA_MSND
+		snd_soc_update_bits(codec,
+				MSM8X16_WCD_A_ANALOG_TX_2_EN,
+				0x78, 0x00);
+#endif /* CONFIG_KYOCERA_MSND */
 		if (mbhc->mbhc_cb && mbhc->mbhc_cb->set_cap_mode)
 			mbhc->mbhc_cb->set_cap_mode(codec, micbias1, false);
 		mbhc->btn_press_intr = false;
@@ -1395,6 +1477,10 @@ static irqreturn_t wcd_mbhc_mech_plug_detect_irq(int irq, void *data)
 static int wcd_mbhc_get_button_mask(u16 btn)
 {
 	int mask = 0;
+
+#ifdef CONFIG_KYOCERA_MSND
+	return 0;
+#endif
 
 	switch (btn) {
 	case 0:
@@ -1860,7 +1946,11 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 	snd_soc_update_bits(codec, MSM8X16_WCD_A_ANALOG_MBHC_DET_CTL_2,
 			0x01, 0x01);
 
+#ifdef CONFIG_KYOCERA_MSND
+	snd_soc_write(codec, MSM8X16_WCD_A_ANALOG_MBHC_DBNC_TIMER, 0x78);
+#else
 	snd_soc_write(codec, MSM8X16_WCD_A_ANALOG_MBHC_DBNC_TIMER, 0x98);
+#endif /* CONFIG_KYOCERA_MSND */
 
 	/* enable MBHC clock */
 	snd_soc_update_bits(codec,

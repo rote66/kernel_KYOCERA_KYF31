@@ -1,3 +1,10 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ *
+ */
 /* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -635,7 +642,11 @@ struct vss_istream_cmd_create_passive_control_session_t {
 #define VSS_IVOLUME_MUTE_OFF		0
 #define VSS_IVOLUME_MUTE_ON		1
 
+#ifdef CONFIG_KYOCERA_MSND
+#define DEFAULT_MUTE_RAMP_DURATION	0
+#else /* CONFIG_KYOCERA_MSND */
 #define DEFAULT_MUTE_RAMP_DURATION	500
+#endif /* CONFIG_KYOCERA_MSND */
 #define DEFAULT_VOLUME_RAMP_DURATION	20
 #define MAX_RAMP_DURATION		5000
 

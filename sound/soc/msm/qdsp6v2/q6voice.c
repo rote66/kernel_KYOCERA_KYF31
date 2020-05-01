@@ -1,3 +1,9 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ *
+ */
 /*  Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -27,8 +33,11 @@
 #include <sound/audio_cal_utils.h>
 #include "q6voice.h"
 
+#ifdef CONFIG_KYOCERA_MSND
+#define TIMEOUT_MS 1000
+#else /* CONFIG_KYOCERA_MSND */
 #define TIMEOUT_MS 300
-
+#endif /* CONFIG_KYOCERA_MSND */
 
 #define CMD_STATUS_SUCCESS 0
 #define CMD_STATUS_FAIL 1
@@ -5219,12 +5228,16 @@ int voc_standby_voice_call(uint32_t session_id)
 	void *apr_mvm;
 	u16 mvm_handle;
 	int ret = 0;
-
+#ifndef CONFIG_KYOCERA_MSND
 	pr_debug("%s: voc state=%d", __func__, v->voc_state);
+#endif /* CONFIG_KYOCERA_MSND */
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
 		return -EINVAL;
 	}
+#ifdef CONFIG_KYOCERA_MSND
+        pr_debug("%s: voc state=%d", __func__, v->voc_state);
+#endif /* CONFIG_KYOCERA_MSND */
 	if (v->voc_state == VOC_RUN) {
 		apr_mvm = common.apr_q6_mvm;
 		if (!apr_mvm) {

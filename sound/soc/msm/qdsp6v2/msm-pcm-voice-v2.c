@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
 /* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -29,6 +33,10 @@
 
 #include "msm-pcm-voice-v2.h"
 #include "q6voice.h"
+
+#ifdef CONFIG_KYOCERA_MSND
+#include "kaudio_bus_scale.h"
+#endif
 
 static struct msm_voice voice_info[VOICE_SESSION_INDEX_MAX];
 
@@ -162,7 +170,11 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 		voice->playback_substream = substream;
 	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
 		voice->capture_substream = substream;
-
+#ifdef CONFIG_KYOCERA_MSND
+	if( voice->instance == 0 ){
+		kaudio_set_bus_scale( 1 );
+	}
+#endif
 	voice->instance++;
 	pr_debug("%s: Instance = %d, Stream ID = %s\n",
 			__func__ , voice->instance, substream->pcm->id);
@@ -221,6 +233,11 @@ static int msm_pcm_close(struct snd_pcm_substream *substream)
 		if (session_id)
 			voc_end_voice_call(session_id);
 	}
+#ifdef CONFIG_KYOCERA_MSND
+	if( prtd->instance == 0 ){
+		kaudio_set_bus_scale( 0 );
+	}
+#endif
 	mutex_unlock(&prtd->lock);
 
 	return ret;

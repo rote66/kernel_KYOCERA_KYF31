@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -532,7 +537,9 @@ err:
 
 static int msm8x16_wcd_volatile(struct snd_soc_codec *codec, unsigned int reg)
 {
+#ifndef CONFIG_KYOCERA_MSND
 	dev_dbg(codec->dev, "%s: reg 0x%x\n", __func__, reg);
+#endif
 
 	return msm8x16_wcd_reg_readonly[reg];
 }
@@ -548,8 +555,10 @@ static int msm8x16_wcd_write(struct snd_soc_codec *codec, unsigned int reg,
 	int ret;
 	struct msm8x16_wcd_priv *msm8x16_wcd = snd_soc_codec_get_drvdata(codec);
 
+#ifndef CONFIG_KYOCERA_MSND
 	dev_dbg(codec->dev, "%s: Write from reg 0x%x val 0x%x\n",
 					__func__, reg, value);
+#endif
 	if (reg == SND_SOC_NOPM)
 		return 0;
 
@@ -596,8 +605,10 @@ static unsigned int msm8x16_wcd_read(struct snd_soc_codec *codec,
 		return -ENODEV;
 	} else
 		val = __msm8x16_wcd_reg_read(codec, reg);
+#ifndef CONFIG_KYOCERA_MSND
 	dev_dbg(codec->dev, "%s: Read from reg 0x%x val 0x%x\n",
 					__func__, reg, val);
+#endif
 	return val;
 }
 
@@ -1100,6 +1111,10 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_KYOCERA_MSND
+static int msm8x16_wcd_codec_enable_clock_block(struct snd_soc_codec *codec, int enable);
+#endif
+
 static int msm8x16_wcd_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 		struct snd_kcontrol *kcontrol, int event)
 {
@@ -1109,6 +1124,9 @@ static int msm8x16_wcd_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 	dev_dbg(codec->dev, "%s: event = %d\n", __func__, event);
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+#ifdef CONFIG_KYOCERA_MSND
+		msm8x16_wcd_codec_enable_clock_block(codec, 1);
+#endif
 		if (!(strcmp(w->name, "EAR CP"))) {
 			snd_soc_update_bits(codec,
 					MSM8X16_WCD_A_DIGITAL_CDC_DIG_CLK_CTL,
@@ -1202,6 +1220,33 @@ static int msm8x16_wcd_pa_gain_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+#ifdef CONFIG_KYOCERA_MSND
+static int msm8x16_wcd_hp_gain_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	u8 hp_gain;
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+
+	hp_gain = snd_soc_read(codec, MSM8X16_WCD_A_ANALOG_RX_EAR_CTL);
+
+	hp_gain = (hp_gain >> 5) & 0x1;
+
+	if (hp_gain == 0x00) {
+		ucontrol->value.integer.value[0] = 0;
+	} else if (hp_gain == 0x01) {
+		ucontrol->value.integer.value[0] = 1;
+	} else  {
+		dev_err(codec->dev, "%s: ERROR: Unsupported HP Gain = 0x%x\n",
+			__func__, hp_gain);
+		return -EINVAL;
+	}
+
+	ucontrol->value.integer.value[0] = hp_gain;
+	dev_dbg(codec->dev, "%s: hp_gain = 0x%x\n", __func__, hp_gain);
+	return 0;
+}
+#endif /* CONFIG_KYOCERA_MSND */
+
 static int msm8x16_wcd_loopback_mode_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
@@ -1264,6 +1309,32 @@ static int msm8x16_wcd_pa_gain_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+#ifdef CONFIG_KYOCERA_MSND
+static int msm8x16_wcd_hp_gain_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	u8 hp_gain;
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+
+	dev_dbg(codec->dev, "%s: ucontrol->value.integer.value[0] = %ld\n",
+		__func__, ucontrol->value.integer.value[0]);
+
+	switch (ucontrol->value.integer.value[0]) {
+	case 0:
+		hp_gain = 0x00;
+		break;
+	case 1:
+		hp_gain = 0x20;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	snd_soc_update_bits(codec, MSM8X16_WCD_A_ANALOG_RX_EAR_CTL,
+			    0x20, hp_gain);
+	return 0;
+}
+#endif /* CONFIG_KYOCERA_MSND */
 
 static int msm8x16_wcd_boost_option_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
@@ -1622,6 +1693,13 @@ static const char * const msm8x16_wcd_ear_pa_gain_text[] = {
 static const struct soc_enum msm8x16_wcd_ear_pa_gain_enum[] = {
 		SOC_ENUM_SINGLE_EXT(2, msm8x16_wcd_ear_pa_gain_text),
 };
+#ifdef CONFIG_KYOCERA_MSND
+static const char * const msm8x16_wcd_hp_gain_text[] = {
+		"POS_M4P5_DB", "POS_0_DB"};
+static const struct soc_enum msm8x16_wcd_hp_gain_enum[] = {
+		SOC_ENUM_SINGLE_EXT(2, msm8x16_wcd_hp_gain_text),
+};
+#endif /* CONFIG_KYOCERA_MSND */
 
 static const char * const msm8x16_wcd_boost_option_ctrl_text[] = {
 		"BOOST_SWITCH", "BOOST_ALWAYS", "BYPASS_ALWAYS",
@@ -1671,6 +1749,11 @@ static const struct snd_kcontrol_new msm8x16_wcd_snd_controls[] = {
 
 	SOC_ENUM_EXT("EAR PA Gain", msm8x16_wcd_ear_pa_gain_enum[0],
 		msm8x16_wcd_pa_gain_get, msm8x16_wcd_pa_gain_put),
+
+#ifdef CONFIG_KYOCERA_MSND
+	SOC_ENUM_EXT("HP Gain", msm8x16_wcd_hp_gain_enum[0],
+		msm8x16_wcd_hp_gain_get, msm8x16_wcd_hp_gain_put),
+#endif /* CONFIG_KYOCERA_MSND */
 
 	SOC_ENUM_EXT("Speaker Boost", msm8x16_wcd_spk_boost_ctl_enum[0],
 		msm8x16_wcd_spk_boost_get, msm8x16_wcd_spk_boost_set),
@@ -2354,6 +2437,9 @@ static int msm8x16_wcd_codec_enable_dig_clk(struct snd_soc_dapm_widget *w,
 			event, w->name);
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+#ifdef CONFIG_KYOCERA_MSND
+		msm8x16_wcd_codec_enable_clock_block(codec, 1);
+#endif
 		snd_soc_update_bits(codec, w->reg, 0x80, 0x80);
 		msm8x16_wcd_boost_mode_sequence(codec, SPK_PMU);
 		break;
@@ -4329,7 +4415,11 @@ static int msm8x16_wcd_codec_probe(struct snd_soc_codec *codec)
 	}
 
 	wcd_mbhc_init(&msm8x16_wcd_priv->mbhc, codec, &mbhc_cb, &intr_ids,
+#ifdef CONFIG_KYOCERA_MSND
+			false);
+#else
 			true);
+#endif /* CONFIG_KYOCERA_MSND */
 
 	msm8x16_wcd_priv->mclk_enabled = false;
 	msm8x16_wcd_priv->clock_active = false;

@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
+/*
  *  Routines for driver control interface
  *  Copyright (c) by Jaroslav Kysela <perex@perex.cz>
  *
@@ -1368,6 +1372,37 @@ static int snd_ctl_tlv_ioctl(struct snd_ctl_file *file,
 	return err;
 }
 
+#ifdef CONFIG_KYOCERA_MSND
+int wcd_mbhc_get_jack_status(void);
+
+static int snd_ctl_kaudio_test(struct snd_ctl_file *file,
+                               struct snd_ctl_kaudio_test __user *_kaudio_test)
+{
+	struct snd_ctl_kaudio_test kaudio_test;
+
+	if (copy_from_user(&kaudio_test, _kaudio_test, sizeof(kaudio_test))){
+		goto err;
+	}
+
+	switch( kaudio_test.cmd ){	/* 4BFC0001110000000000xxxxyyyyyyyy */
+	case 1:						/* 4BFC00011100000000000100yyyyyyyy */
+		kaudio_test.prm = wcd_mbhc_get_jack_status();
+		if( copy_to_user(_kaudio_test, &kaudio_test, sizeof(kaudio_test)) ){
+			goto err;
+		}
+		break;
+
+	default:
+		pr_err("%s:cmd error(%x)\n", __func__, kaudio_test.cmd);
+		break;
+	}
+
+	return kaudio_test.prm;
+err:
+	return -EFAULT;
+}
+#endif /* CONFIG_KYOCERA_MSND */
+
 static long snd_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct snd_ctl_file *ctl;
@@ -1420,6 +1455,11 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 #else
 		return put_user(SNDRV_CTL_POWER_D0, ip) ? -EFAULT : 0;
 #endif
+
+#ifdef CONFIG_KYOCERA_MSND
+	case SNDRV_CTL_IOCTL_KAUDIO_TEST:
+		return snd_ctl_kaudio_test(ctl, argp);
+#endif /* CONFIG_KYOCERA_MSND */
 	}
 	down_read(&snd_ioctl_rwsem);
 	list_for_each_entry(p, &snd_control_ioctls, list) {

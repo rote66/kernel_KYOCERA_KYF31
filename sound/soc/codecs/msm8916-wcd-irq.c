@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
 /* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -30,7 +34,11 @@
 
 #define MAX_NUM_IRQS 14
 #define NUM_IRQ_REGS 2
+#ifdef CONFIG_KYOCERA_MSND
+int WCD9XXX_SYSTEM_RESUME_TIMEOUT_MS = 3000;
+#else
 #define WCD9XXX_SYSTEM_RESUME_TIMEOUT_MS 700
+#endif
 
 #define BYTE_BIT_MASK(nr) (1UL << ((nr) % BITS_PER_BYTE))
 #define BIT_BYTE(nr) ((nr) / BITS_PER_BYTE)

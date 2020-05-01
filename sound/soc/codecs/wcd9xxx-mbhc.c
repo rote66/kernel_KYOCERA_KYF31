@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
 /* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -41,6 +46,13 @@
 #include "wcdcal-hwdep.h"
 #include "wcd9xxx-resmgr.h"
 #include "wcd9xxx-common.h"
+
+#ifdef KC_BATTERY_LOG_ENABLED
+#include <linux/clog.h>
+#define KCBLOG(tag, ...)  CLOG(tag, ##__VA_ARGS__)
+#else
+#define KCBLOG(tag, ...) do{} while(0)
+#endif
 
 #define WCD9XXX_JACK_MASK (SND_JACK_HEADSET | SND_JACK_OC_HPHL | \
 			   SND_JACK_OC_HPHR | SND_JACK_LINEOUT | \
@@ -588,6 +600,7 @@ static void wcd9xxx_codec_switch_cfilt_mode(struct wcd9xxx_mbhc *mbhc,
 static void wcd9xxx_jack_report(struct wcd9xxx_mbhc *mbhc,
 				struct snd_soc_jack *jack, int status, int mask)
 {
+	KCBLOG("audio","jack status=0x%x mask=0x%x",status ,mask);
 	if (jack == &mbhc->headset_jack) {
 		wcd9xxx_resmgr_cond_update_cond(mbhc->resmgr,
 						WCD9XXX_COND_HPH_MIC,

@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
  /* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -50,6 +54,10 @@
 #define WCD9XXX_MBHC_DEF_RLOADS 5
 #define DEFAULT_MCLK_RATE 9600000
 
+#ifdef CONFIG_KYOCERA_MSND
+#define KC_RCVAMP_ENABLE  0x1
+#endif /* CONFIG_KYOCERA_MSND */
+
 #define WCD_MBHC_DEF_RLOADS 5
 
 #define LPASS_CSR_GP_LPAIF_PRI_PCM_PRI_MODE_MUXSEL 0x07702008
@@ -66,12 +74,21 @@ static int msm8909_auxpcm_rate = 8000;
 static atomic_t quat_mi2s_clk_ref;
 static atomic_t auxpcm_mi2s_clk_ref;
 
+#ifdef CONFIG_KYOCERA_MSND
+static int kc_msm8x16_ext_rcv_pamp;
+static int kc_ext_rcv_amp_gpio_ctrl = -1;
+#endif /* CONFIG_KYOCERA_MSND */
+
 static int msm8x16_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
 					bool dapm);
 static int msm8x16_enable_extcodec_ext_clk(struct snd_soc_codec *codec,
 					int enable,	bool dapm);
 
 static int conf_int_codec_mux(struct msm8916_asoc_mach_data *pdata);
+
+#ifdef CONFIG_KYOCERA_MSND
+static int kc_msm8x16_ext_rcvamp_event(struct snd_soc_dapm_widget *w, struct snd_kcontrol *k, int event);
+#endif /* CONFIG_KYOCERA_MSND */
 
 static struct wcd_mbhc_config mbhc_cfg = {
 	.read_fw_bin = false,
@@ -255,6 +272,9 @@ static const struct snd_soc_dapm_widget msm8x16_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Secondary Mic", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic2", NULL),
+#ifdef CONFIG_KYOCERA_MSND
+	SND_SOC_DAPM_SPK("Rcv amp", kc_msm8x16_ext_rcvamp_event),
+#endif /* CONFIG_KYOCERA_MSND */
 };
 
 static char const *rx_bit_format_text[] = {"S16_LE", "S24_LE"};
@@ -275,6 +295,92 @@ static int msm_auxpcm_be_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 	return 0;
 }
+
+#ifdef CONFIG_KYOCERA_MSND
+static void kc_msm8x16_ext_rcv_power_amp_enable(u32 enable)
+{
+	if (enable) {
+		pr_debug("%s: Enabled RCV_ON  (MSM8909 GPIO[%d])\n",__func__, kc_ext_rcv_amp_gpio_ctrl);
+		gpio_direction_output(kc_ext_rcv_amp_gpio_ctrl, 1);
+		pr_debug("%s: Delay 15ms\n",__func__);
+		usleep_range(15000, 15000);
+	} else {
+		pr_debug("%s: Disabled RCV_ON  (MSM8909 GPIO[%d])\n",__func__, kc_ext_rcv_amp_gpio_ctrl);
+		gpio_direction_output(kc_ext_rcv_amp_gpio_ctrl, 0);
+	}
+
+	pr_debug("%s: %s external receiver PAs.\n", __func__,
+		enable ? "Enable" : "Disable");
+}
+
+static void kc_msm8x16_ext_rcv_power_amp_on(u32 rcv)
+{
+	if (gpio_is_valid(kc_ext_rcv_amp_gpio_ctrl)){
+		if (rcv & KC_RCVAMP_ENABLE) {
+			pr_debug("%s:Enable left and right receiver case spk = 0x%x\n",
+				__func__, rcv);
+
+			kc_msm8x16_ext_rcv_pamp |= rcv;
+
+			if (kc_msm8x16_ext_rcv_pamp & KC_RCVAMP_ENABLE) {
+				pr_debug("%s  enable power", __func__);
+				kc_msm8x16_ext_rcv_power_amp_enable(1);
+			}
+		} else  {
+			pr_err("%s: Invalid external receiver ampl. rcv = 0x%x\n",
+				__func__, rcv);
+		}
+	}
+}
+
+static void kc_msm8x16_ext_rcv_power_amp_off(u32 rcv)
+{
+	if (gpio_is_valid(kc_ext_rcv_amp_gpio_ctrl)) {
+		if (rcv & KC_RCVAMP_ENABLE) {
+			pr_debug("%s Disable left and right receiver case rcv = 0x%08x",
+				__func__, rcv);
+
+			kc_msm8x16_ext_rcv_pamp &= ~rcv;
+
+			if (!kc_msm8x16_ext_rcv_pamp) {
+				pr_debug("%s  disable power", __func__);
+				kc_msm8x16_ext_rcv_power_amp_enable(0);
+				kc_msm8x16_ext_rcv_pamp = 0;
+			}
+		 } else  {
+			pr_err("%s: ERROR : Invalid Ext Rcv Ampl. spk = 0x%08x\n",
+				__func__, rcv);
+		}
+	}
+}
+
+static int kc_msm8x16_ext_rcvamp_event(struct snd_soc_dapm_widget *w,
+			struct snd_kcontrol *k, int event)
+{
+	pr_debug("%s()\n", __func__);
+
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+        if (!strncmp(w->name, "Rcv amp", 8)) {
+			kc_msm8x16_ext_rcv_power_amp_on(KC_RCVAMP_ENABLE);
+		} else {
+			pr_err("%s() Invalid Receiver Widget = %s\n",
+				__func__, w->name);
+			return -EINVAL;
+		}
+	} else {
+
+        if (!strncmp(w->name, "Rcv amp", 8)) {
+			kc_msm8x16_ext_rcv_power_amp_off(KC_RCVAMP_ENABLE);
+		} else {
+			pr_err("%s() Invalid Receiver Widget = %s\n",
+				__func__, w->name);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+#endif /* CONFIG_KYOCERA_MSND */
 
 static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 {
@@ -2619,6 +2725,21 @@ static int msm8x16_asoc_machine_probe(struct platform_device *pdev)
 			return -EINVAL;
 		}
 	}
+	
+#ifdef CONFIG_KYOCERA_MSND
+	kc_ext_rcv_amp_gpio_ctrl = of_get_named_gpio(pdev->dev.of_node,
+				"kc,rcv-amp-gpio-ctrl", 0);
+	if (kc_ext_rcv_amp_gpio_ctrl < 0) {
+		dev_err(&pdev->dev, "Looking up %s propertyd %d\n", pdev->dev.of_node->full_name, kc_ext_rcv_amp_gpio_ctrl);
+	} else {
+		ret = gpio_request(kc_ext_rcv_amp_gpio_ctrl, "RECEIVER_AMP_ON");
+		if (ret) {
+			dev_err(card->dev,
+					"%s: Failed to request rcvr gpio on %d\n", __func__, kc_ext_rcv_amp_gpio_ctrl);
+			goto err;
+		}
+	}
+#endif /* CONFIG_KYOCERA_MSND */
 
 	ret = of_property_read_string(pdev->dev.of_node, codec_type, &ptr);
 	if (ret) {
@@ -2752,6 +2873,12 @@ static int msm8x16_asoc_machine_probe(struct platform_device *pdev)
 	}
 	return 0;
 err:
+#ifdef CONFIG_KYOCERA_MSND
+	if (kc_ext_rcv_amp_gpio_ctrl >= 0) {
+		gpio_free(kc_ext_rcv_amp_gpio_ctrl);
+		kc_ext_rcv_amp_gpio_ctrl = -1;
+	}
+#endif /* CONFIG_KYOCERA_MSND */
 	if (pdata->vaddr_gpio_mux_spkr_ctl)
 		iounmap(pdata->vaddr_gpio_mux_spkr_ctl);
 	if (pdata->vaddr_gpio_mux_mic_ctl)

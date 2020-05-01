@@ -1,3 +1,9 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ *
+ */
 /* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -3146,7 +3152,11 @@ static ssize_t afe_debug_write(struct file *filp,
 
 	lbuf[cnt] = '\0';
 
+#ifdef CONFIG_KYOCERA_MSND
+	if (!strncmp(lb_str, "afe_loopback", 17)) {
+#else /* CONFIG_KYOCERA_MSND */
 	if (!strncmp(lb_str, "afe_loopback", 12)) {
+#endif /* CONFIG_KYOCERA_MSND */
 		rc = afe_get_parameters(lbuf, param, 3);
 		if (!rc) {
 			pr_info("%s: %lu %lu %lu\n", lb_str, param[0], param[1],
