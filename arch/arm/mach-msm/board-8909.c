@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/kernel.h>
 #include <linux/of.h>
@@ -16,6 +20,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_fdt.h>
 #include <linux/of_irq.h>
+#include <linux/spi/spi.h>
 #include <asm/mach/arch.h>
 #include <soc/qcom/socinfo.h>
 #include <mach/board.h>
@@ -41,6 +46,20 @@ static void __init msm8909_map_io(void)
 static struct of_dev_auxdata msm8909_auxdata_lookup[] __initdata = {
 	{}
 };
+
+static struct spi_board_info spi_board_info[] __initdata = {
+	{
+		.modalias = "spidev",
+		.bus_num = 0,
+		.chip_select = 0,
+		.max_speed_hz = 12.5*1000*1000,
+		.mode = SPI_MODE_0
+	},
+};
+
+static void __init spi_devices_init(void) {
+	spi_register_board_info( spi_board_info, ARRAY_SIZE(spi_board_info) );
+}
 
 /*
  * Used to satisfy dependencies for devices that need to be
@@ -72,6 +91,8 @@ static void __init msm8909_init(void)
 		pr_err("%s: socinfo_init() failed\n", __func__);
 
 	msm8909_add_drivers();
+	
+	spi_devices_init();
 }
 
 static const char *msm8909_dt_match[] __initconst = {

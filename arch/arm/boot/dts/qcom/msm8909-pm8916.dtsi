@@ -10,6 +10,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include "msm-pm8916-rpm-regulator.dtsi"
 #include "msm-pm8916.dtsi"
@@ -185,7 +189,7 @@
 	qcom,mdss_dsi@1ac8000 {
 		vdda-supply = <&pm8916_l2>;
 		vdd-supply = <&pm8916_l17>;
-		vddio-supply = <&pm8916_l6>;
+		vddio-supply = <&pm8916_l15>;
 	};
 
 	qcom,mdss_dsi_pll@1ac8300 {
@@ -200,6 +204,10 @@
 			qcom,levels = <800000>;
 			qcom,freq-req;
 		};
+	};
+
+	kc,disp_ext_sub {
+		vreg-supply = <&pm8916_l6>;
 	};
 };
 
@@ -280,6 +288,7 @@
 		qcom,scale-function = <1>;
 		qcom,hw-settle-time = <0xb>;
 		qcom,fast-avg-setup = <0>;
+		qcom,vadc-thermal-node;
 	};
 
 	chan@31 {
@@ -324,6 +333,29 @@
 		qcom,pre-div-channel-scaling = <0>;
 		qcom,calibration-type = "ratiometric";
 		qcom,scale-function = <4>;
+		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
+		qcom,vadc-thermal-node;
+	};
+
+	chan@21 { /* MPP2 1:3 */
+		label = "vchg";
+		reg = <0x21>; /* channel 17 for MPP2 , 1:3scale */
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <1>; /* 1:3scale */
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <0>;
+		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
+	};
+
+	chan@13 {
+		label = "camera_therm";
+		reg = <0x13>;
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <0>;
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <15>;
 		qcom,hw-settle-time = <2>;
 		qcom,fast-avg-setup = <0>;
 		qcom,vadc-thermal-node;

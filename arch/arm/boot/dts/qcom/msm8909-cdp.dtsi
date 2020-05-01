@@ -9,6 +9,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include "msm8909.dtsi"
 #include "msm8909-pinctrl.dtsi"
@@ -249,16 +254,14 @@
 		pinctrl-3 = <&cross_conn_det_sus>;
 		pinctrl-4 = <&cdc_pdm_lines_act &cdc_ext_pa_act
 				&cdc_ext_pa_d0_act &cdc_ext_mclk_act
-				&cross_conn_det_act &vdd_spkdrv_act>;
+				&cross_conn_det_act>;
 		pinctrl-5 = <&cdc_pdm_lines_sus &cdc_ext_pa_sus
 				&cdc_ext_pa_d0_sus &cdc_ext_mclk_sus
-				&cross_conn_det_sus &vdd_spkdrv_sus>;
+				&cross_conn_det_sus>;
 		pinctrl-6 = <&cdc_pdm_lines_act &cdc_ext_tlmm_act
-				&cdc_ext_mclk_act &cross_conn_det_act
-				&vdd_spkdrv_act>;
+				&cdc_ext_mclk_act &cross_conn_det_act>;
 		pinctrl-7 = <&cdc_pdm_lines_sus &cdc_ext_tlmm_sus
-				&cdc_ext_mclk_sus &cross_conn_det_sus
-				&vdd_spkdrv_sus>;
+				&cdc_ext_mclk_sus &cross_conn_det_sus>;
 		qcom,cdc-us-euro-gpios = <&msm_gpio 97 0>;
 		asoc-platform = <&pcm0>, <&pcm1>, <&voip>, <&voice>,
 				<&loopback>, <&compress>, <&hostless>,
@@ -293,12 +296,6 @@
 		asoc-codec = <&stub_codec>, <&pm8909_conga_dig>;
 		asoc-codec-names = "msm-stub-codec.1", "tombak_codec";
 	};
-};
-
-&blsp1_uart1 {
-	status = "ok";
-	pinctrl-names = "default";
-	pinctrl-0 = <&uart_console_sleep>;
 };
 
 #include "dsi-panel-hx8394d-720p-video.dtsi"

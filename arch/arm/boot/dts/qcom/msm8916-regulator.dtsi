@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 /* SPM controlled regulators */
 &spmi_bus {
@@ -290,9 +294,9 @@
 	rpm-regulator-ldoa10 {
 		status = "okay";
 		pm8916_l10: regulator-l10 {
-			regulator-min-microvolt = <2700000>;
+			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
-			qcom,init-voltage = <2700000>;
+			qcom,init-voltage = <2800000>;
 			status = "okay";
 		};
 	};
@@ -331,8 +335,8 @@
 		status = "okay";
 		pm8916_l14: regulator-l14 {
 			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <3300000>;
-			qcom,init-voltage = <1800000>;
+			regulator-max-microvolt = <2950000>;
+			qcom,init-voltage = <2950000>;
 			status = "okay";
 		};
 	};
@@ -350,9 +354,11 @@
 	rpm-regulator-ldoa16 {
 		status = "okay";
 		pm8916_l16: regulator-l16 {
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <3300000>;
-			qcom,init-voltage = <1800000>;
+			regulator-min-microvolt = <2950000>;
+			regulator-max-microvolt = <2950000>;
+			qcom,init-voltage = <2950000>;
+			regulator-boot-on;
+			regulator-always-on;
 			status = "okay";
 		};
 	};
@@ -360,9 +366,9 @@
 	rpm-regulator-ldoa17 {
 		status = "okay";
 		pm8916_l17: regulator-l17 {
-			regulator-min-microvolt = <2850000>;
-			regulator-max-microvolt = <2850000>;
-			qcom,init-voltage = <2850000>;
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+			qcom,init-voltage = <2800000>;
 			status = "okay";
 		};
 	};
@@ -370,9 +376,9 @@
 	rpm-regulator-ldoa18 {
 		status = "okay";
 		pm8916_l18: regulator-l18 {
-			regulator-min-microvolt = <2700000>;
-			regulator-max-microvolt = <2700000>;
-			qcom,init-voltage = <2700000>;
+			regulator-min-microvolt = <2850000>;
+			regulator-max-microvolt = <2850000>;
+			qcom,init-voltage = <2850000>;
 			status = "okay";
 		};
 	};

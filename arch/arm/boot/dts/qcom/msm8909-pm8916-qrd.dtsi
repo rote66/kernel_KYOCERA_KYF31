@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include "msm8909.dtsi"
 #include "msm8909-pm8916.dtsi"
@@ -17,12 +21,6 @@
 / {
 	model = "Qualcomm Technologies, Inc. MSM8909-PM8916 QRD";
 	compatible = "qcom,msm8909-qrd", "qcom,msm8909", "qcom,qrd";
-};
-
-&blsp1_uart1 {
-	status = "ok";
-	pinctrl-names = "default";
-	pinctrl-0 = <&uart_console_sleep>;
 };
 
 &qcom_rng {

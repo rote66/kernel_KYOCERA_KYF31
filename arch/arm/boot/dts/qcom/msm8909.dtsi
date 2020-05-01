@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include "skeleton64.dtsi"
 #include <dt-bindings/clock/msm-clocks-8909.h>
@@ -46,8 +50,9 @@
 		 i2c5 = &i2c_5; /* I2c5 cntroller device */
 		i2c3 = &i2c_3; /* I2C3 controller */
 		i2c1 = &i2c_1; /* I2C1 controller */
-		i2c2 = &i2c_2; /* I2C2 NFC qup2 device */
 		i2c4 = &i2c_4; /* I2C4 controller device */
+		serial2 = &uart2;	// This device will be called ttyHSL2
+		serial9 = &uart9;       // This device will be called ttyHSL9
 	};
 
 	cpus {
@@ -104,6 +109,14 @@
 			linux,remove-completely;
 			reg = <0x0 0x8d500000 0x0 0x0500000>;
 			label = "peripheral_mem";
+		};
+
+		kc_mem: kc_region@0 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+			reg = <0x0 0x8DA00000 0x0 0x0600000>;
+			label = "kc_mem";
 		};
 
 		venus_qseecom_mem: venus_qseecom_region@0 {
@@ -342,25 +355,65 @@
 			 < 1267200 >;
 	};
 
-
-	blsp1_uart1: serial@78af000 {
+	uart2: serial@78af000 {
 		compatible = "qcom,msm-lsuart-v14";
 		reg = <0x78af000 0x200>;
 		interrupts = <0 107 0>;
-		status = "disabled";
+		status = "ok";
+		qcom,config-gpio = <1>;
+		qcom,msm-bus,name = "nfc_uart2";
+		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<86 512 0 0>,
+				<86 512 500 800>;
+		pinctrl-names = "uart2_inactive", "uart2_active", "uart2_sleep";
+		pinctrl-0 = <&uartdm_nfc_tx_default &uartdm_nfc_rx_default>;
+		pinctrl-1 = <&uartdm_nfc_tx_f2_active &uartdm_nfc_rx_f2_active>;
+		pinctrl-2 = <&uartdm_nfc_tx_suspend &uartdm_nfc_rx_suspend>;
 		clocks = <&clock_gcc clk_gcc_blsp1_uart1_apps_clk>,
 			 <&clock_gcc clk_gcc_blsp1_ahb_clk>;
 		clock-names = "core_clk", "iface_clk";
 	};
 
-	blsp1_uart2: serial@78b0000 {
+	nfcfelica {
+		compatible = "kc,msm8974-nfc-driver";
+		nfc_pon-gpio = <&msm_gpio 32 0>;
+		nfc_rfs-gpio = <&msm_gpio 110 0>;
+		nfc_int-gpio = <&msm_gpio 31 0>;
+		nfc_intu-gpio = <&msm_gpio 38 0>;
+		nfc_hsel-gpio = <&msm_gpio 1 0>;
+		nfc_vfc-gpio = <&msm_gpio 12 0>;
+	};
+
+	uart9: serial@78b0000 {
 		compatible = "qcom,msm-lsuart-v14";
 		reg = <0x78b0000 0x200>;
 		interrupts = <0 108 0>;
-		status = "disabled";
+		status = "ok";
+		qcom,config-gpio = <1>;
+		qcom,msm-bus,name = "irda_uart9";
+		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<86 512 0 0>,
+				<86 512 500 800>;
+		pinctrl-names = "uart9_inactive", "uart9_active", "uart9_sleep";
+		pinctrl-0 = <&uartdm_ir_tx_default &uartdm_ir_rx_default>;
+		pinctrl-1 = <&uartdm_ir_tx_f3_active &uartdm_ir_rx_f3_active>;
+		pinctrl-2 = <&uartdm_ir_tx_suspend &uartdm_ir_rx_suspend>;
 		clocks = <&clock_gcc clk_gcc_blsp1_uart2_apps_clk>,
 			 <&clock_gcc clk_gcc_blsp1_ahb_clk>;
 		clock-names = "core_clk", "iface_clk";
+	};
+
+	irdasd {
+		compatible = "kc,irdasd";
+		kc,irda-sd = <&msm_gpio 22 0x00>;
+		pinctrl-names = "irdasd_inactive", "irdasd_active", "irdasd_sleep";
+		pinctrl-0 = <&ir_pwdown_default >;
+		pinctrl-1 = <&ir_pwdown_active >;
+		pinctrl-2 = <&ir_pwdown_suspend >;
 	};
 
 	qcom,sps {
@@ -435,6 +488,16 @@
 		sensor_information9: qcom,sensor-information@9 {
 			qcom,sensor-type = "adc";
 			qcom,sensor-name = "xo_therm_buf";
+		};
+
+		sensor_information10: qcom,sensor-information@10 {
+                        qcom,sensor-type = "adc";
+                        qcom,sensor-name = "camera_therm";
+                };
+
+		sensor_information11: qcom,sensor-information@11 {
+			qcom,sensor-type = "adc";
+			qcom,sensor-name = "batt_therm";
 		};
 	};
 
@@ -821,7 +884,7 @@
 		HSUSB_3p3-supply = <&pm8909_l13>;
 		qcom,vdd-voltage-level = <0 1200000 1200000>;
 
-		qcom,hsusb-otg-phy-init-seq = <0x73 0x80 0xffffffff>;
+		qcom,hsusb-otg-phy-init-seq = <0x73 0x80 0x3F 0x81 0x33 0x82 0x33 0x83 0xffffffff>;
 		qcom,hsusb-otg-phy-type = <3>; /* SNPS Femto PHY */
 		qcom,hsusb-otg-mode = <1>; /* DEVICE only */
 		qcom,hsusb-otg-otg-control = <2>; /* PMIC */
@@ -1051,14 +1114,14 @@
 				<81 512 261438 800000>, /* 100 MB/s */
 				<81 512 261438 800000>, /* 200 MB/s */
 				<81 512 1338562 4096000>; /* Max. bandwidth */
-		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000
+		qcom,bus-bw-vectors-bps = <0 384000 20000000 24000000 48000000
 						100000000 200000000 4294967295>;
 
 		clocks = <&clock_gcc clk_gcc_sdcc2_ahb_clk>,
 			 <&clock_gcc clk_gcc_sdcc2_apps_clk>;
 		clock-names = "iface_clk", "core_clk";
 
-		qcom,clk-rates = <400000 25000000 50000000 100000000 200000000>;
+		qcom,clk-rates = <384000 24000000 48000000 100000000 200000000>;
 
 		status = "disabled";
 	};
@@ -1123,8 +1186,8 @@
                 interrupts = <0 100 0>, <0 238 0>;
                 spi-max-frequency = <19200000>;
                 pinctrl-names = "spi_default", "spi_sleep";
-                pinctrl-0 = <&spi0_default &spi0_cs0_active>;
-                pinctrl-1 = <&spi0_sleep &spi0_cs0_sleep>;
+                pinctrl-0 = <&spi0_default &spi0_miso_default &spi0_cs0_active>;
+                pinctrl-1 = <&spi0_sleep &spi0_miso_sleep &spi0_cs0_sleep>;
                 clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
                          <&clock_gcc clk_gcc_blsp1_qup6_spi_apps_clk>;
                 clock-names = "iface_clk", "core_clk";
@@ -1168,6 +1231,7 @@
 			<&dma_blsp1 7 32 0x20000020 0x20>;
 		dma-names = "tx", "rx";
 		qcom,master-id = <86>;
+		status = "disabled";
 	};
 
 	i2c_4: i2c@78b8000 { /* BLSP1 QUP4 */
@@ -1181,11 +1245,12 @@
 		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
 			 <&clock_gcc clk_gcc_blsp1_qup4_i2c_apps_clk>;
 		clock-names = "iface_clk", "core_clk";
-		qcom,clk-freq-out = <100000>;
+		qcom,clk-freq-out = <340000>;
 		qcom,clk-freq-in  = <19200000>;
-		pinctrl-names = "i2c_active", "i2c_sleep";
+		pinctrl-names = "i2c_active", "i2c_sleep", "i2c_gpio";
 		pinctrl-0 = <&i2c_4_active>;
 		pinctrl-1 = <&i2c_4_sleep>;
+		pinctrl-2 = <&i2c_4_gpio>;
 		qcom,noise-rjct-scl = <0>;
 		qcom,noise-rjct-sda = <0>;
 		dmas = <&dma_blsp1 10 64 0x20000020 0x20>,
@@ -1205,11 +1270,13 @@
                clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
                         <&clock_gcc clk_gcc_blsp1_qup5_i2c_apps_clk>;
                clock-names = "iface_clk", "core_clk";
-               qcom,clk-freq-out = <100000>;
+               qcom,clk-freq-out = <340000>;
                qcom,clk-freq-in  = <19200000>;
-               pinctrl-names = "i2c_active", "i2c_sleep";
+               pinctrl-names = "i2c_active", "i2c_sleep", "i2c_gpio", "i2c_default";
                pinctrl-0 = <&i2c_5_active>;
                pinctrl-1 = <&i2c_5_sleep>;
+               pinctrl-2 = <&i2c_5_gpio>;
+               pinctrl-3 = <&i2c_5_default>;
                qcom,noise-rjct-scl = <0>;
                qcom,noise-rjct-sda = <0>;
 	       dmas = <&dma_blsp1 12 64 0x20000020 0x20>,
@@ -1229,11 +1296,12 @@
 		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
 		         <&clock_gcc clk_gcc_blsp1_qup3_i2c_apps_clk>;
 		clock-names = "iface_clk", "core_clk";
-		qcom,clk-freq-out = <400000>;
+		qcom,clk-freq-out = <385000>;
 		qcom,clk-freq-in  = <19200000>;
-		pinctrl-names = "i2c_active", "i2c_sleep";
+		pinctrl-names = "i2c_active", "i2c_sleep", "i2c_gpio";
 		pinctrl-0 = <&i2c_3_active>;
 		pinctrl-1 = <&i2c_3_sleep>;
+		pinctrl-2 = <&i2c_3_gpio>;
 		qcom,noise-rjct-scl = <0>;
 		qcom,noise-rjct-sda = <0>;
 		dmas = <&dma_blsp1 8 64 0x20000020 0x20>,
@@ -1253,11 +1321,12 @@
 		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
 		         <&clock_gcc clk_gcc_blsp1_qup1_i2c_apps_clk>;
 		clock-names = "iface_clk", "core_clk";
-		qcom,clk-freq-out = <100000>;
+		qcom,clk-freq-out = <340000>;
 		qcom,clk-freq-in  = <19200000>;
-		pinctrl-names = "i2c_active", "i2c_sleep";
+		pinctrl-names = "i2c_active", "i2c_sleep", "i2c_gpio";
 		pinctrl-0 = <&i2c_1_active>;
 		pinctrl-1 = <&i2c_1_sleep>;
+		pinctrl-2 = <&i2c_1_gpio>;
 		qcom,noise-rjct-scl = <0>;
 		qcom,noise-rjct-sda = <0>;
 		dmas = <&dma_blsp1 4 64 0x20000020 0x20>,
@@ -1508,6 +1577,16 @@
 		compatible = "qcom,msm-pcm-hostless";
 	};
 
+	kc,kaudio-bus-scale {
+		compatible = "kc,kaudio-bus-scale";
+		qcom,msm-bus,name = "kaudio-bus-scale";
+		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+			<22 512         0         0>,
+			<22 512    640000    640000>;
+	};
+
 	dai_pri_auxpcm: qcom,msm-pri-auxpcm {
 		compatible = "qcom,msm-auxpcm-dev";
 		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
@@ -1734,6 +1813,27 @@
 				"iface_clk", "bus_clk";
 		qcom,ce-opp-freq = <100000000>;
 	};
+
+	oem_hkadc_interrupt_monitor {
+		compatible = "kc,oem_hkadc_usb_tm-driver";
+		oem_hkadc_usb_tm-gpio = <&msm_gpio 36 0x00>;
+	};
+	
+	dtvtuner_pm {
+		compatible = "dtvtuner_pm";
+		cell-index = <0>;
+		gpios = <&msm_gpio 56 0>, /* DTV_LDO_EN */
+				<&msm_gpio 90 0>; /* DTV_HOST_INTB */
+		gpio-names = "DTV_LDO_EN",
+					"DTV_HOST_INTB";
+		gpios-func = <0>;
+		pinctrl-names = "dtvtuner_inactive", "dtvtuner_ldo_active", "dtvtuner_ldo_sleep",
+											"dtvtuner_intb_default";
+		pinctrl-0 = <&dtv_ldo_en_default &dtv_host_intb_default>;
+		pinctrl-1 = <&dtv_ldo_en_active>;
+		pinctrl-2 = <&dtv_ldo_en_suspend>;
+		pinctrl-3 = <&dtv_host_intb_default>;
+    };
 };
 
 &gdsc_venus {

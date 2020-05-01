@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 &spmi_bus {
 
@@ -33,21 +37,32 @@
 			qcom,system-reset;
 			qcom,clear-warm-reset;
 			qcom,store-hard-reset-reason;
+			qcom,s3-debounce = <32>;
+			qcom,s3-src = "kpdpwr-and-resin";
 
 			qcom,pon_1 {
 				qcom,pon-type = <0>;
-				qcom,support-reset = <1>;
+				qcom,support-reset = <0>;
 				qcom,pull-up = <1>;
 				qcom,s1-timer = <10256>;
-				qcom,s2-timer = <2000>;
-				qcom,s2-type = <1>;
+				qcom,s2-timer = <250>;
+				qcom,s2-type = <8>;
 				linux,code = <116>;
 			};
 
 			qcom,pon_2 {
 				qcom,pon-type = <1>;
 				qcom,pull-up = <1>;
-				linux,code = <114>;
+				linux,code = <254>;
+			};
+
+			qcom,pon_3 {
+				qcom,pon-type = <3>;
+				qcom,support-reset = <1>;
+				qcom,s1-timer = <10256>;
+				qcom,s2-timer = <250>;
+				qcom,s2-type = <8>;
+				qcom,pull-up = <1>;
 			};
 		};
 
@@ -268,8 +283,8 @@
 			#size-cells = <1>;
 			status = "disabled";
 
-			qcom,v-cutoff-uv = <3400000>;
-			qcom,max-voltage-uv = <4200000>;
+			qcom,v-cutoff-uv = <3300000>;
+			qcom,max-voltage-uv = <4300000>;
 			qcom,r-conn-mohm = <0>;
 			qcom,shutdown-soc-valid-limit = <100>;
 			qcom,low-soc-calculate-soc-threshold = <15>;
@@ -278,7 +293,7 @@
 			qcom,calculate-soc-ms = <20000>;
 			qcom,volatge-soc-timeout-ms = <60000>;
 			qcom,low-voltage-threshold = <3450000>;
-			qcom,s3-ocv-tolerence-uv = <1200>;
+			qcom,s3-ocv-tolerence-uv = <3600>;
 			qcom,s2-fifo-length = <5>;
 			qcom,low-soc-fifo-length = <2>;
 			qcom,bms-vadc = <&pm8916_vadc>;
@@ -287,7 +302,6 @@
 
 			qcom,force-s3-on-suspend;
 			qcom,force-s2-in-charging;
-			qcom,report-charger-eoc;
 			qcom,resume-soc = <99>;
 
 			qcom,batt-pres-status@1208 {
@@ -320,6 +334,13 @@
 			compatible = "qcom,leds-qpnp";
 			reg = <0xa100 0x100>;
 			label = "mpp";
+		};
+
+		oem_hkadc {
+			compatible = "oem_hkadc-driver";
+			qcom,oem-hkadc-vadc = <&pm8916_vadc>;
+			oem,monitor-time-ms = <10000>;
+			oem,resume-mon-time-ms = <1000>;
 		};
 	};
 

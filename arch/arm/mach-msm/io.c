@@ -16,6 +16,10 @@
  * GNU General Public License for more details.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -122,6 +126,12 @@ void __init msm_map_mdm9630_io(void)
 #if defined(CONFIG_ARCH_MSM8909) || defined(CONFIG_ARCH_MDMFERRUM)
 static struct map_desc msm8909_io_desc[] __initdata = {
 	MSM_CHIP_DEVICE(APCS_GCC, MSM8909),
+	{
+		.virtual =  (unsigned long) MSM_UNINIT_RAM_BASE,
+		.pfn =      __phys_to_pfn(MSM_UNINIT_RAM_BASE_PHY),
+		.length =   MSM_UNINIT_RAM_SIZE,
+		.type =     MT_DEVICE,
+	},
 #if defined(CONFIG_DEBUG_MSM8909_UART) || defined(CONFIG_DEBUG_MDMFERRUM_UART)
 	MSM_DEVICE(DEBUG_UART),
 #endif

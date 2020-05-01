@@ -19,6 +19,10 @@
  * provide a master phys->virt mapping for peripherals here.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #ifndef __ASM_ARCH_MSM_IOMAP_H
 #define __ASM_ARCH_MSM_IOMAP_H
@@ -87,6 +91,11 @@
 							  0xFB600000 */
 #define MSM_STRONGLY_ORDERED_PAGE	0xFA0F0000
 #define MSM8625_CPU_PHYS		0x0FE00000
+
+
+#define MSM_UNINIT_RAM_BASE_PHY (0x8DC00000)
+#define MSM_UNINIT_RAM_BASE IOMEM(0xFBD00000)   /*  4M  */
+#define MSM_UNINIT_RAM_SIZE (SZ_1M * 4)         /*  4M  */
 
 #include "msm_iomap-8974.h"
 #include "msm_iomap-8084.h"

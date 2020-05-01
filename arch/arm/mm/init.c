@@ -7,6 +7,10 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/swap.h>
@@ -14,6 +18,7 @@
 #include <linux/bootmem.h>
 #include <linux/mman.h>
 #include <linux/mm.h>
+#include <linux/nmi.h>
 #include <linux/export.h>
 #include <linux/nodemask.h>
 #include <linux/initrd.h>
@@ -145,6 +150,71 @@ void show_mem(unsigned int filter)
 	printk("%d pages shared\n", shared);
 	printk("%d pages swap cached\n", cached);
 }
+
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+void show_mem_lmk_mon(unsigned int filter, void *logfunc)
+{
+	pg_data_t *pgdat;
+	unsigned long total = 0, reserved = 0, shared = 0,
+		nonshared = 0, highmem = 0;
+	int (*print_log)(const char *fmt, ...)
+		= (int (*)(const char *fmt, ...))logfunc;
+
+	if (!logfunc) {
+		pr_err("%s: logfunc is Null\n", __func__);
+		return;
+	}
+
+	print_log("Mem-Info:\n");
+	show_free_areas_lmk_mon(filter, logfunc);
+
+	if (filter & SHOW_MEM_FILTER_PAGE_COUNT)
+		return;
+
+	for_each_online_pgdat(pgdat) {
+		unsigned long i, flags;
+
+		pgdat_resize_lock(pgdat, &flags);
+		for (i = 0; i < pgdat->node_spanned_pages; i++) {
+			struct page *page;
+			unsigned long pfn = pgdat->node_start_pfn + i;
+
+			if (unlikely(!(i % MAX_ORDER_NR_PAGES)))
+				touch_nmi_watchdog();
+
+			if (!pfn_valid(pfn))
+				continue;
+
+			page = pfn_to_page(pfn);
+
+			if (PageHighMem(page))
+				highmem++;
+
+			if (PageReserved(page))
+				reserved++;
+			else if (page_count(page) == 1)
+				nonshared++;
+			else if (page_count(page) > 1)
+				shared += page_count(page) - 1;
+
+			total++;
+		}
+		pgdat_resize_unlock(pgdat, &flags);
+	}
+
+	print_log("%lu pages RAM\n", total);
+#ifdef CONFIG_HIGHMEM
+	print_log("%lu pages HighMem\n", highmem);
+#endif
+	print_log("%lu pages reserved\n", reserved);
+	print_log("%lu pages shared\n", shared);
+	print_log("%lu pages non-shared\n", nonshared);
+#ifdef CONFIG_QUICKLIST
+	print_log("%lu pages in pagetable cache\n",
+		quicklist_total_size());
+#endif
+}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 static void __init find_limits(unsigned long *min, unsigned long *max_low,
 			       unsigned long *max_high)

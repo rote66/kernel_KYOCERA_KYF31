@@ -1,6 +1,13 @@
 /*
  *  linux/arch/arm/kernel/traps.c
  *
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ *
  *  Copyright (C) 1995-2009 Russell King
  *  Fragments that appear the same as linux/arch/i386/kernel/traps.c (C) Linus Torvalds
  *
@@ -12,6 +19,7 @@
  *  'linux/arch/arm/lib/traps.S'.  Mostly a debugging aid, but will probably
  *  kill the offending process.
  */
+
 #include <linux/signal.h>
 #include <linux/personality.h>
 #include <linux/kallsyms.h>
@@ -26,6 +34,10 @@
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/bug.h>
+#include <linux/seq_file.h>
+#include <linux/mount.h>
+#include <linux/fs_struct.h>
+#include <linux/kcjlog.h>
 
 #include <linux/atomic.h>
 #include <asm/cacheflush.h>
@@ -217,6 +229,392 @@ void show_stack(struct task_struct *tsk, unsigned long *sp)
 	barrier();
 }
 
+/* get usermode regisgters from the bottom of kernel stack. */
+static int get_regs_user(struct pt_regs * regs)
+{
+	unsigned long* kstackbottom;
+	unsigned long* uregs;
+	unsigned long ip;
+	int i;
+	int ret;
+
+	/* copy usermode registers from the bottom of kernel stack */
+	kstackbottom = (unsigned long*)current_thread_info();
+	uregs = &kstackbottom[0x1FB0/4];
+
+	for (i = 0; i < ARRAY_SIZE(regs->uregs); i++) {
+		regs->uregs[i] = uregs[i];
+	}
+
+	/* check for SWI */
+	ret = copy_from_user(&ip, (void *)((unsigned long)regs->ARM_pc - 4), 4);
+
+	if ((ip & 0x0F000000) == 0x0F000000) {
+		ret = 0;
+	}
+	else {
+		ret = -1;
+	}
+
+	return ret;
+}
+
+static void show_regs_user(struct pt_regs *regs)
+{
+	printk("--- dump user registers ---\n");
+	printk("pc : [<%08lx>]    lr : [<%08lx>]    psr: %08lx\n"
+	       "sp : %08lx  ip : %08lx  fp : %08lx\n",
+	       regs->ARM_pc, regs->ARM_lr, regs->ARM_cpsr,
+	       regs->ARM_sp, regs->ARM_ip, regs->ARM_fp);
+	printk("r10: %08lx  r9 : %08lx  r8 : %08lx\n",
+	       regs->ARM_r10, regs->ARM_r9,
+	       regs->ARM_r8);
+	printk("r7 : %08lx  r6 : %08lx  r5 : %08lx  r4 : %08lx\n",
+	       regs->ARM_r7, regs->ARM_r6,
+	       regs->ARM_r5, regs->ARM_r4);
+	printk("r3 : %08lx  r2 : %08lx  r1 : %08lx  r0 : %08lx\n",
+	       regs->ARM_r3, regs->ARM_r2,
+	       regs->ARM_r1, regs->ARM_r0);
+}
+
+static void pad_len_spaces(int len)
+{
+	len = 27 - len;
+	if (len < 1)
+		len = 1;
+	printk("%*c", len, ' ');
+}
+
+static int prepend(char **buffer, int *buflen, const char *str, int namelen)
+{
+	*buflen -= namelen;
+	if (*buflen < 0)
+		return -ENAMETOOLONG;
+	*buffer -= namelen;
+	memcpy(*buffer, str, namelen);
+	return 0;
+}
+
+static int prepend_name(char **buffer, int *buflen, struct qstr *name)
+{
+	return prepend(buffer, buflen, name->name, name->len);
+}
+
+struct mount {
+	struct list_head mnt_hash;
+	struct mount *mnt_parent;
+	struct dentry *mnt_mountpoint;
+	struct vfsmount mnt;
+#ifdef CONFIG_SMP
+	struct mnt_pcp __percpu *mnt_pcp;
+	atomic_t mnt_longterm;		/* how many of the refs are longterm */
+#else
+	int mnt_count;
+	int mnt_writers;
+#endif
+	struct list_head mnt_mounts;	/* list of children, anchored here */
+	struct list_head mnt_child;	/* and going through their mnt_child */
+	struct list_head mnt_instance;	/* mount instance on sb->s_mounts */
+	const char *mnt_devname;	/* Name of device e.g. /dev/dsk/hda1 */
+	struct list_head mnt_list;
+	struct list_head mnt_expire;	/* link in fs-specific expiry list */
+	struct list_head mnt_share;	/* circular list of shared mounts */
+	struct list_head mnt_slave_list;/* list of slave mounts */
+	struct list_head mnt_slave;	/* slave list entry */
+	struct mount *mnt_master;	/* slave is on master->mnt_slave_list */
+	struct mnt_namespace *mnt_ns;	/* containing namespace */
+#ifdef CONFIG_FSNOTIFY
+	struct hlist_head mnt_fsnotify_marks;
+	__u32 mnt_fsnotify_mask;
+#endif
+	int mnt_id;			/* mount identifier */
+	int mnt_group_id;		/* peer group identifier */
+	int mnt_expiry_mark;		/* true if marked for expiry */
+	int mnt_pinned;
+	int mnt_ghosts;
+};
+
+static inline struct mount *real_mount(struct vfsmount *mnt)
+{
+	return container_of(mnt, struct mount, mnt);
+}
+
+static inline int mnt_has_parent(struct mount *mnt)
+{
+	return mnt != mnt->mnt_parent;
+}
+
+static int prepend_path(const struct path *path,
+			const struct path *root,
+			char **buffer, int *buflen)
+{
+	struct dentry *dentry = path->dentry;
+	struct vfsmount *vfsmnt = path->mnt;
+	struct mount *mnt = real_mount(vfsmnt);
+	bool slash = false;
+	int error = 0;
+
+	while (dentry != root->dentry || vfsmnt != root->mnt) {
+		struct dentry * parent;
+
+		if (dentry == vfsmnt->mnt_root || IS_ROOT(dentry)) {
+			/* Global root? */
+			if (!mnt_has_parent(mnt))
+				goto global_root;
+			dentry = mnt->mnt_mountpoint;
+			mnt = mnt->mnt_parent;
+			vfsmnt = &mnt->mnt;
+			continue;
+		}
+		parent = dentry->d_parent;
+		prefetch(parent);
+		error = prepend_name(buffer, buflen, &dentry->d_name);
+		if (!error)
+			error = prepend(buffer, buflen, "/", 1);
+		if (error)
+			break;
+
+		slash = true;
+		dentry = parent;
+	}
+
+	if (!error && !slash)
+		error = prepend(buffer, buflen, "/", 1);
+
+out:
+    return error;
+
+global_root:
+    if (!slash)
+        error = prepend(buffer, buflen, "/", 1);
+    if (!error)
+        error = real_mount(vfsmnt)->mnt_ns ? 1 : 2;
+    goto out;
+}
+
+static int path_with_deleted_local(const struct path *path, struct path *root,
+				   char **buf, int *buflen)
+{
+	prepend(buf, buflen, "\0", 1);
+	if (d_unlinked(path->dentry)) {
+		int error = prepend(buf, buflen, " (deleted)", 10);
+		if (error)
+			return error;
+	}
+
+	return prepend_path(path, root, buf, buflen);
+}
+
+static inline void get_fs_root_local(struct fs_struct *fs, struct path *root)
+{
+	*root = fs->root;
+}
+
+static char *d_path_local(const struct path *path, char *buf, int buflen)
+{
+	char *res = buf + buflen;
+	struct path root;
+	int error;
+
+	get_fs_root_local(current->fs, &root);
+	error = path_with_deleted_local(path, &root, &res, &buflen);
+	if (error < 0)
+		res = ERR_PTR(error);
+	return res;
+}
+
+static void print_path(struct path *path)
+{
+	static char buf[PATH_MAX];
+	int res = 0;
+
+	char *p = d_path_local(path, buf, PATH_MAX);
+	if (!IS_ERR(p)) {
+		char *end = mangle_path(buf, p, "\n");
+		if (end)
+			res = end - buf;
+	}
+	if (res >= PATH_MAX)
+		res = PATH_MAX - 1;
+
+	buf[res] = '\0';
+	printk("%s", buf);
+
+	return;
+}
+
+static void show_map_vma(struct vm_area_struct *vma)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	struct file *file = vma->vm_file;
+	vm_flags_t flags = vma->vm_flags;
+	unsigned long ino = 0;
+	unsigned long long pgoff = 0;
+	unsigned long start, end;
+	dev_t dev = 0;
+	int len;
+
+	if (0 == (flags & VM_EXEC)) {
+		return;
+	}
+
+	if (file) {
+		struct inode *inode = vma->vm_file->f_path.dentry->d_inode;
+		dev = inode->i_sb->s_dev;
+		ino = inode->i_ino;
+		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
+	}
+
+	/* We don't show the stack guard page in /proc/maps */
+	start = vma->vm_start;
+	if (stack_guard_page_start(vma, start))
+		start += PAGE_SIZE;
+	end = vma->vm_end;
+	if (stack_guard_page_end(vma, end))
+		end -= PAGE_SIZE;
+
+	len = printk("%08lx-%08lx %08llx",
+	       start,
+	       end,
+	       pgoff);
+
+	/*
+	 * Print the dentry name for named mappings, and a
+	 * special [heap] marker for the heap:
+	 */
+	if (file) {
+		pad_len_spaces(len);
+		print_path(&file->f_path);
+	} else {
+		const char *name = arch_vma_name(vma);
+		if (!name) {
+			if (mm) {
+				if (vma->vm_start <= mm->brk &&
+				    vma->vm_end >= mm->start_brk) {
+					name = "[heap]";
+				} else if (vma->vm_start <= mm->start_stack &&
+					   vma->vm_end >= mm->start_stack) {
+					name = "[stack]";
+				}
+			} else {
+				name = "[vdso]";
+			}
+		}
+		if (name) {
+			pad_len_spaces(len);
+			printk("%s", name);
+		}
+	}
+	printk("\n");
+}
+
+static void show_maps_user(void)
+{
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma;
+	struct vm_area_struct *tail_vma;
+
+	printk("--- dump map info ---\n");
+
+	if (mm == NULL) {
+		printk("%s : current->mm == NULL\n", __func__);
+		return;
+	}
+
+	if (!down_read_trylock(&mm->mmap_sem)) {
+		printk("%s : failed to down_read mmap_sem\n", __func__);
+		return;
+	}
+
+	/* release the semaphore now in order to avoid a deadlock
+	 * even if data abort occurs in show_map_vma.
+	 */
+	up_read(&mm->mmap_sem);
+
+	tail_vma = get_gate_vma(mm);
+
+	for (vma = mm->mmap; vma != NULL && vma != tail_vma; vma = vma->vm_next)
+		show_map_vma(vma);
+
+	return;
+}
+
+static int get_map_info_for_sp(unsigned long sp, unsigned long *ret_start,
+                               unsigned long *ret_end)
+{
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma;
+	int ret = -1;
+
+	if (mm == NULL) {
+		printk("%s : current->mm == NULL\n", __func__);
+		return ret;
+	}
+
+	if (!down_read_trylock(&mm->mmap_sem)) {
+		printk("%s : failed to down_read mmap_sem\n", __func__);
+		return ret;
+	}
+
+	vma = find_vma(mm, sp);
+
+	if(vma && (vma->vm_start <= sp) && (sp < vma->vm_end)) {
+		*ret_start = vma->vm_start;
+		*ret_end = vma->vm_end;
+		ret = 0;
+	}
+
+	up_read(&mm->mmap_sem);
+
+	return ret;
+}
+
+#define USERSTACK_DUMP_SIZE_MAX         (0x2000)
+
+static void show_stacks_user(struct pt_regs *regs)
+{
+	unsigned long bottom;
+	unsigned long start;
+	unsigned long end;
+	unsigned long top;
+
+	printk("--- dump user stack ---\n");
+
+	top = regs->ARM_sp;
+
+	if (0 != get_map_info_for_sp(top, &start, &end)) {
+		printk("%s : failed to get_map_info_for_sp\n", __func__);
+		return;
+	}
+	bottom = end;
+
+	if (bottom - top > USERSTACK_DUMP_SIZE_MAX)
+		bottom = top + USERSTACK_DUMP_SIZE_MAX;
+
+	dump_mem(KERN_EMERG, "User Stack: ", top, bottom);
+}
+
+static void dump_userspace(void)
+{
+	struct pt_regs regs;
+
+	/* get regs */
+	if (get_regs_user(&regs)) {
+		printk("%s : no syscall entry\n", __func__);
+		return ;
+	}
+
+	printk("=== dump userspace information begin ===\n");
+
+	show_regs_user(&regs);
+
+	show_stacks_user(&regs);
+
+	show_maps_user();
+
+	printk("=== dump userspace information end ===\n");
+}
+
 #ifdef CONFIG_PREEMPT
 #define S_PREEMPT " PREEMPT"
 #else
@@ -291,6 +689,8 @@ static unsigned long oops_begin(void)
 
 static void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 {
+	static atomic_t dump_userspace_allowed = ATOMIC_INIT(1);
+
 	if (regs && kexec_should_crash(current))
 		crash_kexec(regs);
 
@@ -303,6 +703,19 @@ static void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 		arch_spin_unlock(&die_lock);
 	raw_local_irq_restore(flags);
 	oops_exit();
+
+	if (signr == SIGSEGV &&
+		(!user_mode(regs) || in_interrupt())) {
+		/* dump userspace information only once */
+		if (atomic_dec_and_test(&dump_userspace_allowed)) {
+			bust_spinlocks(1);
+			dump_userspace();
+			bust_spinlocks(0);
+		}
+		else {
+			atomic_set(&dump_userspace_allowed, -1);
+		}
+	}
 
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
@@ -320,6 +733,7 @@ void die(const char *str, struct pt_regs *regs, int err)
 	enum bug_trap_type bug_type = BUG_TRAP_TYPE_NONE;
 	unsigned long flags = oops_begin();
 	int sig = SIGSEGV;
+	struct thread_info *thread = current_thread_info();
 
 	if (!user_mode(regs))
 		bug_type = report_bug(regs->ARM_pc, regs);
@@ -329,6 +743,7 @@ void die(const char *str, struct pt_regs *regs, int err)
 	if (__die(str, err, regs))
 		sig = 0;
 
+	set_smem_crash_info_data_add_reg(regs->ARM_pc, regs->ARM_lr, thread->task->comm);
 	oops_end(flags, regs, sig);
 }
 
