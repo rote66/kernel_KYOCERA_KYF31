@@ -2683,10 +2683,6 @@ static struct module *setup_load_info(struct load_info *info, int flags)
 	/* This is temporary: point mod into copy of data. */
 	mod = (void *)info->sechdrs[info->index.mod].sh_addr;
 
-	err = security_kernel_setup_load_info(mod->name);
-	if (err)
-		return ERR_PTR(-ENOEXEC);
-
 	if (info->index.sym == 0) {
 		printk(KERN_WARNING "%s: module has no symbols (stripped?)\n",
 		       mod->name);

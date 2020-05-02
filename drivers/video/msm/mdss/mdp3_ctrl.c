@@ -2065,19 +2065,6 @@ static int mdp3_ctrl_lut_update(struct msm_fb_data_type *mfd,
 	return rc;
 }
 
-/* Called from within pp_lock locked context */
-static int mdp3_ctrl_lut_update(struct msm_fb_data_type *mfd,
-				struct fb_cmap *cmap)
-{
-	int rc = 0;
-	struct mdp3_session_data *mdp3_session = mfd->mdp.private1;
-
-	mutex_lock(&mdp3_session->lock);
-	rc = mdp3_ctrl_lut_update_locked(mfd, cmap);
-	mutex_unlock(&mdp3_session->lock);
-	return rc;
-}
-
 static int mdp3_ctrl_lut_config(struct msm_fb_data_type *mfd,
 				struct mdp_rgb_lut_data *cfg)
 {

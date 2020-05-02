@@ -244,9 +244,6 @@ static void set_gsbi_uart_func_mode(struct uart_port *port)
  */
 static int msm_hsl_config_uart_tx_rx_gpios(struct uart_port *port)
 {
-	struct platform_device *pdev = to_platform_device(port->dev);
-	const struct msm_serial_hslite_platform_data *pdata =
-					pdev->dev.platform_data;
 	int ret;
 	struct msm_hsl_port *msm_hsl_port = UARTDM_TO_MSM(port);
 
