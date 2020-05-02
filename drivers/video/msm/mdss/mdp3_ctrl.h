@@ -59,9 +59,7 @@ struct mdp3_session_data {
 	atomic_t dma_done_cnt;
 	int histo_status;
 	struct mutex histo_lock;
-	struct mutex pp_lock;
 	int lut_sel;
-	int cc_vect_sel;
 	bool vsync_before_commit;
 	bool first_commit;
 	int clk_on;

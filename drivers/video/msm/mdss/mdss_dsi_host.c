@@ -2,7 +2,7 @@
  * This software is contributed or developed by KYOCERA Corporation.
  * (C) 2016 KYOCERA Corporation
  */
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1052,8 +1052,11 @@ static void mdss_dsi_mode_setup(struct mdss_panel_data *pdata)
 	height = pdata->panel_info.yres;
 
 	if (pdata->panel_info.type == MIPI_VIDEO_PANEL) {
-		dummy_xres = pdata->panel_info.lcdc.xres_pad;
-		dummy_yres = pdata->panel_info.lcdc.yres_pad;
+		dummy_xres = mult_frac((pdata->panel_info.lcdc.border_left +
+				pdata->panel_info.lcdc.border_right),
+				dst_bpp, pdata->panel_info.bpp);
+		dummy_yres = pdata->panel_info.lcdc.border_top +
+				pdata->panel_info.lcdc.border_bottom;
 	}
 
 	vsync_period = vspw + vbp + height + dummy_yres + vfp;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,17 +25,12 @@ int msm_isp_axi_create_stream(
 	struct msm_vfe_axi_shared_data *axi_data,
 	struct msm_vfe_axi_stream_request_cmd *stream_cfg_cmd)
 {
-	int i, rc = -1;
-	for (i = 0; i < MAX_NUM_STREAM; i++) {
-		if (axi_data->stream_info[i].state == AVALIABLE)
-			break;
+	uint32_t i = stream_cfg_cmd->stream_src;
+	if (i >= MAX_NUM_STREAM) {
+		pr_err("%s:%d invalid stream_src %d\n", __func__, __LINE__,
+			stream_cfg_cmd->stream_src);
+		return -EINVAL;
 	}
-
-	if (i == MAX_NUM_STREAM) {
-		pr_err("%s: No free stream\n", __func__);
-		return rc;
-	}
-
 	if ((axi_data->stream_handle_cnt << 8) == 0)
 		axi_data->stream_handle_cnt++;
 
@@ -515,7 +510,9 @@ void msm_isp_notify(struct vfe_device *vfe_dev, uint32_t event_type,
 			frame_src,
 			vfe_dev->axi_data.src_info[frame_src].frame_id);
 		break;
-
+	case ISP_EVENT_REG_UPDATE:
+		vfe_dev->axi_data.src_info[frame_src].last_updt_frm_id = 0;
+		break;
 	default:
 		break;
 	}
