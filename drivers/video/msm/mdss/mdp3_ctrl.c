@@ -1387,7 +1387,6 @@ static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd)
 	}
 
 	mdp3_session->vsync_before_commit = 0;
-	panel = mdp3_session->panel;
 	if (!splash_done || mdp3_session->esd_recovery == true) {
 		if(panel && panel->set_backlight)
 			panel->set_backlight(panel, panel->panel_info.bl_max);
@@ -1764,7 +1763,6 @@ static int mdp3_csc_config(struct mdp3_session_data *session,
 	/* cache one copy of setting for suspend/resume reconfiguring */
 	session->dma->ccs_cache = *data;
 
-	mutex_lock(&session->lock);
 	mdp3_clk_enable(1, 0);
 	ret = session->dma->config_ccs(session->dma, &config, &ccs);
 	mdp3_clk_enable(0, 0);
@@ -2297,7 +2295,6 @@ static void mdp3_ctrl_pp_resume(struct msm_fb_data_type *mfd)
 	 * histogram processing algorithms will program hardware based on new
 	 * frame data if they are enabled.
 	 */
-	mutex_lock(&mdp3_session->pp_lock);
 	if (dma->lut_sts & MDP3_LUT_GC_EN) {
 
 		rc = mdp3_alloc_lut_buffer(mfd->pdev, (void **)&cmap);
@@ -2591,7 +2588,6 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
 	INIT_WORK(&mdp3_session->dma_done_work, mdp3_dispatch_dma_done);
 	atomic_set(&mdp3_session->vsync_countdown, 0);
 	mutex_init(&mdp3_session->histo_lock);
-	mutex_init(&mdp3_session->pp_lock);
 	mdp3_session->dma = mdp3_get_dma_pipe(MDP3_DMA_CAP_ALL);
 	if (!mdp3_session->dma) {
 		rc = -ENODEV;
