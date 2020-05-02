@@ -13,12 +13,20 @@
  * GNU General Public License for more details.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #ifndef _LINUX_LOGGER_H
 #define _LINUX_LOGGER_H
 
 #include <linux/types.h>
 #include <linux/ioctl.h>
+#include <linux/io.h>
+#include <mach/msm_iomap.h>
+#include "resetlog.h"
 
 /**
  * struct user_logger_entry_compat - defines a single entry that is given to a logger
@@ -85,5 +93,10 @@ struct logger_entry {
 #define LOGGER_FLUSH_LOG		_IO(__LOGGERIO, 4) /* flush log */
 #define LOGGER_GET_VERSION		_IO(__LOGGERIO, 5) /* abi version */
 #define LOGGER_SET_VERSION		_IO(__LOGGERIO, 6) /* abi version */
+
+#define ADDR_LOGGER_INFO_MAIN   ( &((ram_log_info_type *)ADDR_CONTROL_INFO)->info[LOGGER_INFO_MAIN  ] )
+#define ADDR_LOGGER_INFO_SYSTEM ( &((ram_log_info_type *)ADDR_CONTROL_INFO)->info[LOGGER_INFO_SYSTEM] )
+#define ADDR_LOGGER_INFO_EVENTS ( &((ram_log_info_type *)ADDR_CONTROL_INFO)->info[LOGGER_INFO_EVENTS] )
+#define ADDR_LOGGER_INFO_RADIO  ( &((ram_log_info_type *)ADDR_CONTROL_INFO)->info[LOGGER_INFO_RADIO ] )
 
 #endif /* _LINUX_LOGGER_H */

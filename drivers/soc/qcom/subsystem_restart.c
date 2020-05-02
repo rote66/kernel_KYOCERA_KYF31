@@ -9,6 +9,14 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #define pr_fmt(fmt) "subsys-restart: %s(): " fmt, __func__
 
@@ -34,6 +42,7 @@
 #include <linux/of_gpio.h>
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
+#include <linux/kcjlog.h>
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/subsystem_notif.h>
 #include <soc/qcom/socinfo.h>
@@ -347,10 +356,10 @@ found:
 	return order;
 }
 
-static int max_restarts;
+static int max_restarts = 2;
 module_param(max_restarts, int, 0644);
 
-static long max_history_time = 3600;
+static long max_history_time = 40;
 module_param(max_history_time, long, 0644);
 
 static void do_epoch_check(struct subsys_device *dev)
@@ -756,6 +765,35 @@ err_out:
 }
 EXPORT_SYMBOL(subsystem_put);
 
+static void subsys_notice_kerr(void)
+{
+       unsigned char crash_system[32];
+       static char *envp[] = {
+               "HOME=/",
+               "TERM=linux",
+               "PATH=/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin",
+               NULL
+       };
+
+       char *argv[] = {
+               "/system/vendor/bin/kerr_client",
+               (char*)crash_system,
+               NULL
+       };
+       int ret;
+
+       memset(&crash_system[0], 0x00, sizeof(crash_system));
+       get_smem_crash_system(crash_system, sizeof(crash_system));
+       if (crash_system[0] == 0) {
+               return;
+       }
+       ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
+       if (ret < 0) {
+               return;
+       }
+       return;
+}
+
 static void subsystem_restart_wq_func(struct work_struct *work)
 {
 	struct subsys_device *dev = container_of(work,
@@ -804,6 +842,12 @@ static void subsystem_restart_wq_func(struct work_struct *work)
 	spin_lock_irqsave(&track->s_lock, flags);
 	track->p_state = SUBSYS_RESTARTING;
 	spin_unlock_irqrestore(&track->s_lock, flags);
+
+    subsys_notice_kerr();
+
+	set_modemlog_info();
+	set_kcj_crash_info();
+	dump_kcj_log();
 
 	/* Collect ram dumps for all subsystems in order here */
 	for_each_subsys_device(list, count, NULL, subsystem_ramdump);
@@ -1593,6 +1637,9 @@ static int subsys_panic(struct device *dev, void *data)
 static int ssr_panic_handler(struct notifier_block *this,
 				unsigned long event, void *ptr)
 {
+	set_smem_kcjlog(SYSTEM_KERNEL, KIND_PANIC);
+	set_smem_crash_info_data(" ");
+
 	bus_for_each_dev(&subsys_bus_type, NULL, NULL, subsys_panic);
 	return NOTIFY_DONE;
 }

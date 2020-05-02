@@ -10,6 +10,10 @@
  *
  *  MMC card bus driver model
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
 
 #include <linux/export.h>
 #include <linux/device.h>
@@ -392,13 +396,13 @@ int mmc_add_card(struct mmc_card *card)
 		uhs_bus_speed_mode = uhs_speeds[card->sd_bus_speed];
 
 	if (mmc_host_is_spi(card->host)) {
-		pr_info("%s: new %s%s%s card on SPI\n",
+		pr_notice("%s: new %s%s%s card on SPI\n",
 			mmc_hostname(card->host),
 			mmc_card_highspeed(card) ? "high speed " : "",
 			mmc_card_ddr_mode(card) ? "DDR " : "",
 			type);
 	} else {
-		pr_info("%s: new %s%s%s%s%s%s card at address %04x\n",
+		pr_notice("%s: new %s%s%s%s%s%s card at address %04x\n",
 			mmc_hostname(card->host),
 			mmc_card_uhs(card) ? "ultra high speed " :
 			(mmc_card_highspeed(card) ? "high speed " : ""),
@@ -463,10 +467,10 @@ void mmc_remove_card(struct mmc_card *card)
 
 	if (mmc_card_present(card)) {
 		if (mmc_host_is_spi(card->host)) {
-			pr_info("%s: SPI card removed\n",
+			pr_notice("%s: SPI card removed\n",
 				mmc_hostname(card->host));
 		} else {
-			pr_info("%s: card %04x removed\n",
+			pr_notice("%s: card %04x removed\n",
 				mmc_hostname(card->host), card->rca);
 		}
 		device_del(&card->dev);

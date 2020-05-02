@@ -10,6 +10,11 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -262,9 +267,12 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 				}
 			}
 #endif
-			pr_debug("%s:     %d bytes transferred: %d\n",
-				mmc_hostname(host),
-				mrq->data->bytes_xfered, mrq->data->error);
+			if ( ( host->index == 0 && mrq->stop && SDC_SDCARD_LOG(SDC_SDCARD_LOG_EMMC) ) ||
+			     ( host->index == 1 && mrq->stop && SDC_SDCARD_LOG(SDC_SDCARD_LOG_SD) ) ){
+				pr_notice("%s:     %d bytes transferred: %d\n",
+					mmc_hostname(host),
+					mrq->data->bytes_xfered, mrq->data->error);
+			}
 			trace_mmc_blk_rw_end(cmd->opcode, cmd->arg, mrq->data);
 		}
 
@@ -294,9 +302,12 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 #endif
 
 	if (mrq->sbc) {
-		pr_debug("<%s: starting CMD%u arg %08x flags %08x>\n",
-			 mmc_hostname(host), mrq->sbc->opcode,
-			 mrq->sbc->arg, mrq->sbc->flags);
+		if ( ( host->index == 0 && SDC_SDCARD_LOG(SDC_SDCARD_LOG_EMMC) ) ||
+		     ( host->index == 1 && SDC_SDCARD_LOG(SDC_SDCARD_LOG_SD) ) ){
+			pr_notice("<%s: starting CMD%u arg %08x flags %08x>\n",
+				 mmc_hostname(host), mrq->sbc->opcode,
+				 mrq->sbc->arg, mrq->sbc->flags);
+		}
 	}
 
 	pr_debug("%s: starting CMD%u arg %08x flags %08x\n",

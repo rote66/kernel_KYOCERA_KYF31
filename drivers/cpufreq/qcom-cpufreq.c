@@ -16,6 +16,11 @@
  * GNU General Public License for more details.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -160,7 +165,7 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 			   table[index].driver_data);
 	if (ret)
 		return ret;
-	pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
+	pr_err("cpufreq: cpu%d init at %d switching to %d\n",
 			policy->cpu, cur_freq, table[index].frequency);
 	policy->cur = table[index].frequency;
 	cpufreq_frequency_table_get_attr(table, policy->cpu);

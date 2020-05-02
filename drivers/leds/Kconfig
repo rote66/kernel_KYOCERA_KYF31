@@ -1,3 +1,8 @@
+#
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2016 KYOCERA Corporation
+#
+
 config LEDS_GPIO_REGISTER
 	bool
 	help
@@ -524,6 +529,22 @@ config LEDS_AW2013
 	help
 	  This option enables support for the AW2013 RGB LED connected
 	  through I2C. Say Y to enable support for the AW2013 LED.
+
+config LEDS_LV5216
+	tristate "LCD Backlight driver for LV5216"
+	depends on LEDS_CLASS
+	depends on I2C
+	default y
+	help
+	  This option enables support for the LCD backlight using
+	  LV5216.
+
+config LEDS_MSM_MDM
+	tristate "modem LED control support"
+	depends on LEDS_CLASS
+	default y
+	help
+	  Say Y to enable modem LED control.
 
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"

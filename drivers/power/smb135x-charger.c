@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 #define pr_fmt(fmt) "%s: " fmt, __func__
 
 #include <linux/i2c.h>
@@ -28,6 +32,22 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
 #include <linux/pinctrl/consumer.h>
+
+#include <linux/wakelock.h>
+#include <soc/qcom/oem_fact.h>
+#include <linux/bug.h>
+
+#ifdef CONFIG_OEM_BMS
+#include "oem-bms.h"
+#endif
+
+#ifdef CONFIG_OEM_HKADC_USB_TM
+#include "oem-hkadc_usb_tm.h"
+#endif
+
+#include <linux/qpnp/qpnp-adc.h>
+#include <linux/reboot.h>
+#include <soc/qcom/oem_fact.h>
 
 #define SMB135X_BITS_PER_REG	8
 
@@ -62,20 +82,24 @@
 #define USB_2_3_BIT			BIT(5)
 
 #define CFG_A_REG			0x0A
+#define DCIN_ADAPTER_ALLOW_MASK	SMB135X_MASK(7, 5)
 #define DCIN_INPUT_MASK			SMB135X_MASK(4, 0)
 
 #define CFG_C_REG			0x0C
+#define USBIN_ADAPTER_ALLOW_MASK	SMB135X_MASK(7, 5)
 #define USBIN_INPUT_MASK		SMB135X_MASK(4, 0)
 
 #define CFG_D_REG			0x0D
 
 #define CFG_E_REG			0x0E
+#define HVDCP_EN_BIT			BIT(3)
 #define POLARITY_100_500_BIT		BIT(2)
 #define USB_CTRL_BY_PIN_BIT		BIT(1)
 #define HVDCP_5_9_BIT			BIT(4)
 
 #define CFG_11_REG			0x11
 #define PRIORITY_BIT			BIT(7)
+#define OTHERCHARGER_CURRENT_LIMIT_BIT	BIT(5)
 
 #define USBIN_DCIN_CFG_REG		0x12
 #define USBIN_SUSPEND_VIA_COMMAND_BIT	BIT(6)
@@ -99,11 +123,17 @@
 #define CHG_STAT_ACTIVE_HIGH_BIT	BIT(1)
 #define CHG_STAT_IRQ_ONLY_BIT		BIT(4)
 
+#define CFG_18_REG			0x18
+#define CHG_OK_EN_BIT				BIT(3)
+#define CHG_VCHG_PAON_BIT			BIT(0)
+
+
 #define CFG_19_REG			0x19
 #define BATT_MISSING_ALGO_BIT		BIT(2)
 #define BATT_MISSING_THERM_BIT		BIT(1)
 
 #define CFG_1A_REG			0x1A
+#define OEM_JEITA_TEMP_HARD_LIMIT	BIT(5)
 #define HOT_SOFT_VFLOAT_COMP_EN_BIT	BIT(3)
 #define COLD_SOFT_VFLOAT_COMP_EN_BIT	BIT(2)
 #define HOT_SOFT_CURRENT_COMP_EN_BIT	BIT(1)
@@ -119,6 +149,8 @@
 #define HOT_SOFT_MASK			SMB135X_MASK(1, 0)
 #define HOT_SOFT_SHIFT			0
 
+#define CFG_1D_REG			0x1D
+
 #define VFLOAT_REG			0x1E
 
 #define VERSION1_REG			0x2A
@@ -133,7 +165,9 @@
 #define IRQ_BAT_HOT_COLD_HARD_BIT	BIT(7)
 #define IRQ_BAT_HOT_COLD_SOFT_BIT	BIT(6)
 #define IRQ_OTG_OVER_CURRENT_BIT	BIT(4)
+#define IRQ_USBIN_OV_BIT		BIT(3)
 #define IRQ_USBIN_UV_BIT		BIT(2)
+#define IRQ_AICL_DONE_BIT		BIT(1)
 #define IRQ_INTERNAL_TEMPERATURE_BIT	BIT(0)
 
 #define IRQ2_CFG_REG			0x08
@@ -148,6 +182,7 @@
 #define IRQ3_CFG_REG			0x09
 #define IRQ3_RID_DETECT_BIT		BIT(4)
 #define IRQ3_SRC_DETECT_BIT		BIT(2)
+#define IRQ3_DCIN_OV_BIT		BIT(1)
 #define IRQ3_DCIN_UV_BIT		BIT(0)
 
 #define USBIN_OTG_REG			0x0F
@@ -174,6 +209,9 @@
 #define OTG_EN				BIT(0)
 
 /* Status registers */
+#define STATUS_0_REG			0x46
+#define ICL_STATUS_MASK			SMB135X_MASK(5, 0)
+
 #define STATUS_1_REG			0x47
 #define USING_USB_BIT			BIT(1)
 #define USING_DC_BIT			BIT(0)
@@ -236,6 +274,7 @@
 
 #define IRQ_D_REG			0x53
 #define IRQ_D_TIMEOUT_BIT		BIT(2)
+#define IRQ_D_BATTERY_OV_BIT	BIT(6)
 
 #define IRQ_E_REG			0x54
 #define IRQ_E_DC_OV_BIT			BIT(6)
@@ -295,6 +334,9 @@ enum {
 	USER = BIT(0),
 	THERMAL = BIT(1),
 	CURRENT = BIT(2),
+#ifdef CONFIG_OEM_HKADC_USB_TM
+	USB_THERMAL = BIT(30),
+#endif
 };
 
 enum path_type {
@@ -332,10 +374,13 @@ struct smb135x_chg {
 	bool				usb_present;
 	bool				dc_present;
 	bool				usb_slave_present;
-	bool				dc_ov;
+	bool				dc_uv;
+	bool				usb_uv;
+	bool				usb_ov;
 
 	bool				bmd_algo_disabled;
 	bool				iterm_disabled;
+	bool				aicl_reconfigured;
 	int				iterm_ma;
 	int				vfloat_mv;
 	int				safety_time;
@@ -350,6 +395,7 @@ struct smb135x_chg {
 	int				fastchg_current_arr_size;
 	int				*fastchg_current_table;
 	int				fastchg_ma;
+	int				dc_health;
 	u8				irq_cfg_mask[3];
 	int				otg_oc_count;
 
@@ -361,12 +407,15 @@ struct smb135x_chg {
 	struct power_supply		*usb_psy;
 	int				usb_psy_ma;
 	int				real_usb_psy_ma;
+	int				usb_aicl_reconfigured_ma;
+
 	struct power_supply		batt_psy;
 	struct power_supply		dc_psy;
 	struct power_supply		parallel_psy;
 	struct power_supply		*bms_psy;
 	int				dc_psy_type;
 	int				dc_psy_ma;
+	int				init_dc_psy_ma;
 	const char			*bms_psy_name;
 
 	/* status tracking */
@@ -404,12 +453,65 @@ struct smb135x_chg {
 
 	const char			*pinctrl_state_name;
 	struct pinctrl			*smb_pinctrl;
+
+	bool				oem_battery_ov;
+	struct delayed_work		oem_src_detect_work;
+
+#ifdef CONFIG_OEM_BMS
+	bool			oem_fake_batt_full;
+	bool			oem_full_check_flag;
+	bool			oem_recharge_once_flag;
+	struct delayed_work	oem_recharge_work;
+#endif
+	unsigned int		cool_bat_ma;
+	unsigned int		warm_bat_ma;
+	unsigned int		cool_bat_mv;
+	unsigned int		warm_bat_mv;
+	bool			jeita_supported;
+	struct qpnp_vadc_chip	*vadc_dev;
+	struct qpnp_adc_tm_chip	*adc_tm_dev;
+	struct qpnp_adc_tm_btm_param	adc_param;
+	int			cold_bat_decidegc;
+	int			hot_bat_decidegc;
+	int			cool_bat_decidegc;
+	int			warm_bat_decidegc;
+	int			bat_present_decidegc;
 };
+
+static struct smb135x_chg *the_chip;
 
 #define RETRY_COUNT 5
 int retry_sleep_ms[RETRY_COUNT] = {
 	10, 20, 30, 40, 50
 };
+
+
+/*================================================================ */
+struct wake_lock oem_charge_wake_lock;
+static void oem_set_chg_wakelock(struct smb135x_chg *chip, bool enable);
+static void oem_clear_done_batt_full(struct smb135x_chg *chip);
+
+#ifdef CONFIG_OEM_BMS
+static void oem_recharge_flag_init(struct smb135x_chg *chip);
+static void oem_recharge_check(struct work_struct *work);
+#endif
+
+/* SW_JEITA control */
+static void oem_smb_parse_dt(struct smb135x_chg *chip);
+static int oem_smb135x_get_prop_batt_temp(struct smb135x_chg *chip);
+static int oem_smb135x_get_prop_battery_voltage_now(struct smb135x_chg *chip);
+static int oem_smb135x_chg_set_appropriate_battery_current(struct smb135x_chg *chip);
+static int oem_smb135x_chg_set_appropriate_vddmax(struct smb135x_chg *chip);
+static void oem_smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx);
+static void oem_chg_battery_removal(struct smb135x_chg *chip);
+
+#define OEM_SRC_DETECT_WORK_MS	100
+static void oem_src_detect_retry_work(struct work_struct *work);
+
+#define OEM_FACTORY_USB_ICL		960
+
+static void oem_smb_register_check(struct smb135x_chg *chip);
+/*================================================================ */
 
 static int __smb135x_read(struct smb135x_chg *chip, int reg,
 				u8 *val)
@@ -452,6 +554,9 @@ retry:
 		dev_err(chip->dev,
 			"i2c write fail: can't write %02x to %02x: %d\n",
 			val, reg, ret);
+
+		oem_smb_register_check(chip);
+
 		return ret;
 	}
 	pr_debug("Writing 0x%02x=0x%02x\n", reg, val);
@@ -634,7 +739,7 @@ static enum power_supply_type usb_type_enum[] = {
 	POWER_SUPPLY_TYPE_USB_ACA,	/* bit 2 */
 	POWER_SUPPLY_TYPE_USB_ACA,	/* bit 3 */
 	POWER_SUPPLY_TYPE_USB,		/* bit 4 */
-	POWER_SUPPLY_TYPE_UNKNOWN,	/* bit 5 */
+	POWER_SUPPLY_TYPE_OTHER,	/* bit 5 */
 	POWER_SUPPLY_TYPE_USB_DCP,	/* bit 6 */
 	POWER_SUPPLY_TYPE_USB_CDP,	/* bit 7 */
 	POWER_SUPPLY_TYPE_UNKNOWN,	/* bit 8 error case, report UNKNWON */
@@ -656,7 +761,12 @@ static enum power_supply_property smb135x_battery_properties[] = {
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_TECHNOLOGY,
+	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL,
+#ifdef CONFIG_OEM_HKADC_USB_TM
+	POWER_SUPPLY_PROP_USB_TEMP_LEVEL,
+#endif
 };
 
 static int smb135x_get_prop_batt_status(struct smb135x_chg *chip)
@@ -666,8 +776,17 @@ static int smb135x_get_prop_batt_status(struct smb135x_chg *chip)
 	u8 reg = 0;
 	u8 chg_type;
 
+#ifdef CONFIG_OEM_BMS
+	if (oem_bms_get_full_suppress()) {
+		return POWER_SUPPLY_STATUS_CHARGING;
+	}
+
+	if ((chip->chg_done_batt_full || chip->oem_fake_batt_full) && !oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_01, 6))
+		return POWER_SUPPLY_STATUS_FULL;
+#else
 	if (chip->chg_done_batt_full)
 		return POWER_SUPPLY_STATUS_FULL;
+#endif
 
 	rc = smb135x_read(chip, STATUS_4_REG, &reg);
 	if (rc < 0) {
@@ -685,11 +804,16 @@ static int smb135x_get_prop_batt_status(struct smb135x_chg *chip)
 	}
 
 	chg_type = (reg & CHG_TYPE_MASK) >> CHG_TYPE_SHIFT;
-
-	if (chg_type == BATT_NOT_CHG_VAL)
-		status = POWER_SUPPLY_STATUS_DISCHARGING;
-	else
+	if (chg_type == BATT_NOT_CHG_VAL) {
+		if (chip->usb_present || chip->dc_present) {
+			status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		} else {
+			status = POWER_SUPPLY_STATUS_DISCHARGING;
+		}
+	} else {
 		status = POWER_SUPPLY_STATUS_CHARGING;
+	}
+
 out:
 	pr_debug("STATUS_4_REG=%x\n", reg);
 	return status;
@@ -697,6 +821,7 @@ out:
 
 static int smb135x_get_prop_batt_present(struct smb135x_chg *chip)
 {
+#ifdef QUALCOMM_ORIGINAL
 	int rc;
 	u8 reg;
 
@@ -707,7 +832,7 @@ static int smb135x_get_prop_batt_present(struct smb135x_chg *chip)
 	/* treat battery gone if less than 2V */
 	if (reg & BATT_LESS_THAN_2V)
 		return 0;
-
+#endif
 	return chip->batt_present;
 }
 
@@ -762,6 +887,8 @@ static int smb135x_get_prop_batt_health(struct smb135x_chg *chip)
 		ret.intval = POWER_SUPPLY_HEALTH_WARM;
 	else if (chip->batt_cool)
 		ret.intval = POWER_SUPPLY_HEALTH_COOL;
+	else if (chip->oem_battery_ov)
+		ret.intval = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 	else
 		ret.intval = POWER_SUPPLY_HEALTH_GOOD;
 
@@ -781,6 +908,45 @@ static int smb135x_enable_volatile_writes(struct smb135x_chg *chip)
 	return rc;
 }
 
+
+#define ICL_STATUS_TBL_SIZE		32
+#define CURRENT_180_MA					180
+#define OEM_MAX_USB_INPUT_CURRENT		1200
+static int oem_icl_status_table[] = {
+	390,
+	390,
+	390,
+	420,
+	540,
+	570,
+	600,
+	660,
+	720,
+	900,
+	900,
+	960,
+	1080,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+	1200,
+};
+
 static int usb_current_table_smb1356[] = {
 	180,
 	240,
@@ -797,12 +963,49 @@ static int usb_current_table_smb1356[] = {
 	660,
 	720,
 	840,
+	870,
 	900,
 	960,
 	1080,
 	1110,
 	1128,
 	1146,
+	1158,
+	1170,
+	1182,
+	1200,
+	1230,
+	1260,
+	1380,
+	1440,
+	1500,
+	1800
+};
+
+static int fastchg_current_table[] = {
+	180,
+	240,
+	270,
+	285,
+	300,
+	330,
+	360,
+	390,
+	420,
+	540,
+	570,
+	600,
+	660,
+	720,
+	840,
+	1620,
+	900,
+	960,
+	1080,
+	1110,
+	1128,
+	1146,
+	1680,
 	1170,
 	1182,
 	1200,
@@ -811,44 +1014,7 @@ static int usb_current_table_smb1356[] = {
 	1380,
 	1440,
 	1560,
-	1620,
-	1680,
 	1800
-};
-
-static int fastchg_current_table[] = {
-	300,
-	400,
-	450,
-	475,
-	500,
-	550,
-	600,
-	650,
-	700,
-	900,
-	950,
-	1000,
-	1100,
-	1200,
-	1400,
-	2700,
-	1500,
-	1600,
-	1800,
-	1850,
-	1880,
-	1910,
-	2800,
-	1950,
-	1970,
-	2000,
-	2050,
-	2100,
-	2300,
-	2400,
-	2500,
-	3000
 };
 
 static int usb_current_table_smb1357_smb1358[] = {
@@ -1032,8 +1198,13 @@ static int smb135x_path_suspend(struct smb135x_chg *chip, enum path_type path,
 
 	if (*path_suspended && !suspended)
 		rc = func(chip, 0);
-	if (!(*path_suspended) && suspended)
+	if (!(*path_suspended) && suspended) {
 		rc = func(chip, 1);
+#ifdef CONFIG_OEM_BMS
+		oem_recharge_flag_init(chip);
+		cancel_delayed_work_sync(&chip->oem_recharge_work);
+#endif
+	}
 
 	if (rc)
 		dev_err(chip->dev, "Couldn't set/unset suspend for %s path rc = %d\n",
@@ -1174,6 +1345,11 @@ static int smb135x_set_usb_chg_current(struct smb135x_chg *chip,
 
 	pr_debug("USB current_ma = %d\n", current_ma);
 
+	if(oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_03, 2)){
+		pr_debug("USB current_ma %dmA -> %dmA\n", current_ma, OEM_FACTORY_USB_ICL);
+		current_ma = OEM_FACTORY_USB_ICL;
+	}
+
 	if (chip->workaround_flags & WRKARND_USB100_BIT) {
 		pr_info("USB requested = %dmA using %dmA\n", current_ma,
 						CURRENT_500_MA);
@@ -1242,8 +1418,12 @@ static int smb135x_set_dc_chg_current(struct smb135x_chg *chip,
 	int i, rc;
 	u8 dc_cur_val;
 
+	pr_debug("DC current_ma = %d\n", current_ma);
+
+	current_ma = min(current_ma, chip->dc_psy_ma);
+
 	for (i = chip->dc_current_arr_size - 1; i >= 0; i--) {
-		if (chip->dc_psy_ma >= chip->dc_current_table[i])
+		if (current_ma >= chip->dc_current_table[i])
 			break;
 	}
 	dc_cur_val = i & DCIN_INPUT_MASK;
@@ -1514,14 +1694,25 @@ static int smb135x_battery_set_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
 		smb135x_charging(chip, val->intval);
+		power_supply_set_online(chip->usb_psy,
+				val->intval && chip->usb_present);
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		chip->fake_battery_soc = val->intval;
 		update_psy = 1;
 		break;
 	case POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL:
+		if(oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_01, 3)){
+			break;
+		}
 		smb135x_system_temp_level_set(chip, val->intval);
 		break;
+#ifdef CONFIG_OEM_HKADC_USB_TM
+	case POWER_SUPPLY_PROP_USB_TEMP_LEVEL:
+		smb135x_path_suspend(chip, USB, USB_THERMAL, val->intval);
+		smb135x_path_suspend(chip, DC, USB_THERMAL, val->intval);
+		break;
+#endif
 	default:
 		rc = -EINVAL;
 	}
@@ -1540,6 +1731,9 @@ static int smb135x_battery_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
 	case POWER_SUPPLY_PROP_CAPACITY:
 	case POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL:
+#ifdef CONFIG_OEM_HKADC_USB_TM
+	case POWER_SUPPLY_PROP_USB_TEMP_LEVEL:
+#endif
 		rc = 1;
 		break;
 	default:
@@ -1578,9 +1772,20 @@ static int smb135x_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
 		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		val->intval = oem_smb135x_get_prop_batt_temp(chip);
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		val->intval = oem_smb135x_get_prop_battery_voltage_now(chip);
+		break;
 	case POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL:
 		val->intval = chip->therm_lvl_sel;
 		break;
+#ifdef CONFIG_OEM_HKADC_USB_TM
+	case POWER_SUPPLY_PROP_USB_TEMP_LEVEL:
+		val->intval = oem_hkadc_usb_therm_error_state();
+		break;
+#endif
 	default:
 		return -EINVAL;
 	}
@@ -1608,11 +1813,30 @@ static int smb135x_dc_get_property(struct power_supply *psy,
 		val->intval = chip->chg_enabled ? chip->dc_present : 0;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		val->intval = chip->dc_present;
+		val->intval = chip->dc_health;
 		break;
 	default:
 		return -EINVAL;
 	}
+	return 0;
+}
+
+static int smb135x_dc_set_property(struct power_supply *psy,
+					enum power_supply_property prop,
+					const union power_supply_propval *val)
+{
+	struct smb135x_chg *chip = container_of(psy,
+					struct smb135x_chg, dc_psy);
+	switch (prop) {
+	case POWER_SUPPLY_PROP_HEALTH:
+		chip->dc_health = val->intval;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	power_supply_changed(&chip->dc_psy);
+
 	return 0;
 }
 
@@ -1953,7 +2177,8 @@ static void smb135x_external_power_changed(struct power_supply *psy)
 	else
 		current_limit = prop.intval / 1000;
 
-	pr_debug("current_limit = %d\n", current_limit);
+	pr_debug("current_limit = min(usb_psy[%d], aicled_input_current[%d])\n", current_limit, chip->usb_aicl_reconfigured_ma);
+	current_limit = min(current_limit, chip->usb_aicl_reconfigured_ma);
 
 	if (chip->usb_psy_ma != current_limit) {
 		mutex_lock(&chip->current_change_lock);
@@ -1961,27 +2186,20 @@ static void smb135x_external_power_changed(struct power_supply *psy)
 		rc = smb135x_set_appropriate_current(chip, USB);
 		mutex_unlock(&chip->current_change_lock);
 		if (rc < 0)
-			dev_err(chip->dev, "Couldn't set usb current rc = %d\n",
+			dev_err(chip->dev, "Couldn't set usb current to %d rc = %d\n", chip->usb_psy_ma,
 					rc);
 	}
 
 	rc = chip->usb_psy->get_property(chip->usb_psy,
 			POWER_SUPPLY_PROP_ONLINE, &prop);
-	if (rc < 0)
+	if (rc < 0) {
 		dev_err(chip->dev,
 			"could not read USB ONLINE property, rc=%d\n", rc);
-
-	/* update online property */
-	rc = 0;
-	if (chip->usb_present && chip->chg_enabled && chip->usb_psy_ma != 0) {
-		if (prop.intval == 0)
-			rc = power_supply_set_online(chip->usb_psy, true);
 	} else {
-		if (prop.intval == 1)
-			rc = power_supply_set_online(chip->usb_psy, false);
+		/* reset online property if charging is not enabled */
+		if (prop.intval && !chip->chg_enabled)
+			power_supply_set_online(chip->usb_psy, false);
 	}
-	if (rc < 0)
-		dev_err(chip->dev, "could not set usb online, rc=%d\n", rc);
 }
 
 static bool elapsed_msec_greater(struct timeval *start_time,
@@ -2145,8 +2363,9 @@ static int smb135x_set_current_tables(struct smb135x_chg *chip)
 		chip->dc_current_table = dc_current_table_smb1356;
 		chip->dc_current_arr_size
 			= ARRAY_SIZE(dc_current_table_smb1356);
-		chip->fastchg_current_table = NULL;
-		chip->fastchg_current_arr_size = 0;
+		chip->fastchg_current_table = fastchg_current_table;
+		chip->fastchg_current_arr_size
+			= ARRAY_SIZE(fastchg_current_table);
 		break;
 	case V_SMB1357:
 		chip->usb_current_table = usb_current_table_smb1357_smb1358;
@@ -2154,9 +2373,8 @@ static int smb135x_set_current_tables(struct smb135x_chg *chip)
 			= ARRAY_SIZE(usb_current_table_smb1357_smb1358);
 		chip->dc_current_table = dc_current_table;
 		chip->dc_current_arr_size = ARRAY_SIZE(dc_current_table);
-		chip->fastchg_current_table = fastchg_current_table;
-		chip->fastchg_current_arr_size
-			= ARRAY_SIZE(fastchg_current_table);
+		chip->fastchg_current_table = NULL;
+		chip->fastchg_current_arr_size = 0;
 		break;
 	case V_SMB1358:
 		chip->usb_current_table = usb_current_table_smb1357_smb1358;
@@ -2341,31 +2559,41 @@ static void wireless_insertion_work(struct work_struct *work)
 static int hot_hard_handler(struct smb135x_chg *chip, u8 rt_stat)
 {
 	pr_debug("rt_stat = 0x%02x\n", rt_stat);
+#ifdef QUALCOMM_ORIGINAL
 	chip->batt_hot = !!rt_stat;
+#endif
 	return 0;
 }
 static int cold_hard_handler(struct smb135x_chg *chip, u8 rt_stat)
 {
 	pr_debug("rt_stat = 0x%02x\n", rt_stat);
+#ifdef QUALCOMM_ORIGINAL
 	chip->batt_cold = !!rt_stat;
+#endif
 	return 0;
 }
 static int hot_soft_handler(struct smb135x_chg *chip, u8 rt_stat)
 {
 	pr_debug("rt_stat = 0x%02x\n", rt_stat);
+#ifdef QUALCOMM_ORIGINAL
 	chip->batt_warm = !!rt_stat;
+#endif
 	return 0;
 }
 static int cold_soft_handler(struct smb135x_chg *chip, u8 rt_stat)
 {
 	pr_debug("rt_stat = 0x%02x\n", rt_stat);
+#ifdef QUALCOMM_ORIGINAL
 	chip->batt_cool = !!rt_stat;
+#endif
 	return 0;
 }
 static int battery_missing_handler(struct smb135x_chg *chip, u8 rt_stat)
 {
 	pr_debug("rt_stat = 0x%02x\n", rt_stat);
+#ifdef QUALCOMM_ORIGINAL
 	chip->batt_present = !rt_stat;
+#endif
 	return 0;
 }
 static int vbat_low_handler(struct smb135x_chg *chip, u8 rt_stat)
@@ -2387,8 +2615,26 @@ static int chg_term_handler(struct smb135x_chg *chip, u8 rt_stat)
 	 * is disabled (due to change in RT status). However, in a bms
 	 * controlled design the battery status should not be updated.
 	 */
-	if (!chip->iterm_disabled)
+	if (!chip->iterm_disabled){
 		chip->chg_done_batt_full = !!rt_stat;
+#ifdef CONFIG_OEM_BMS
+		if (chip->chg_done_batt_full){
+			if (chip->oem_fake_batt_full){
+				chip->oem_fake_batt_full = false;
+				pr_debug("Recharging end\n");
+				return 0;
+			}
+		
+			if ((chip->batt_warm) || (chip->batt_cool)) {
+				oem_bms_set_full_suppress(true);
+				pr_info("set full_suppress warm:%d cool:%d\n", chip->batt_warm, chip->batt_cool);
+			} else if (!(chip->batt_hot) && !(chip->batt_cold)){
+				chip->oem_recharge_once_flag = false;
+				pr_debug("The completion of charge at normal temperature\n");
+			}
+		}
+#endif
+	}
 	return 0;
 }
 
@@ -2402,8 +2648,15 @@ static int fast_chg_handler(struct smb135x_chg *chip, u8 rt_stat)
 {
 	pr_debug("rt_stat = 0x%02x\n", rt_stat);
 
-	if (rt_stat & IRQ_C_FASTCHG_BIT)
+	if (rt_stat & IRQ_C_FASTCHG_BIT) {
 		chip->chg_done_batt_full = false;
+#ifdef CONFIG_OEM_BMS
+		if (!chip->oem_fake_batt_full){
+			chip->oem_full_check_flag = false;
+			cancel_delayed_work_sync(&chip->oem_recharge_work);
+		}
+#endif
+	}
 
 	return 0;
 }
@@ -2427,6 +2680,62 @@ static int recharge_handler(struct smb135x_chg *chip, u8 rt_stat)
 static int safety_timeout_handler(struct smb135x_chg *chip, u8 rt_stat)
 {
 	pr_warn("safety timeout rt_stat = 0x%02x\n", rt_stat);
+	return 0;
+}
+
+static int battery_ov_handler(struct smb135x_chg *chip, u8 rt_stat)
+{
+	pr_debug("battery ov rt_stat = 0x%02x\n", rt_stat);
+	chip->oem_battery_ov = !!rt_stat;
+	return 0;
+}
+
+static int aicl_done_handler(struct smb135x_chg *chip, u8 rt_stat)
+{
+	int rc, current_ma;
+	u8 reg = 0;
+
+	pr_debug("rt_stat = 0x%02x\n", rt_stat);
+
+	if (!chip->aicl_reconfigured
+			&& !!rt_stat) {
+		
+		mutex_lock(&chip->current_change_lock);
+		if (chip->therm_lvl_sel == 0) {
+			/* Read ICL status and reconfigure ICL */
+			rc = smb135x_read(chip, STATUS_0_REG, &reg);
+			if (rc < 0) {
+				pr_err("Couldn't read stat 0 rc = %d\n", rc);
+				mutex_unlock(&chip->current_change_lock);
+				return 0;
+			}
+			
+			/* update ICL */
+			reg &= ICL_STATUS_MASK;
+			if (ARRAY_SIZE(oem_icl_status_table) > reg) {
+				current_ma = oem_icl_status_table[reg];
+			} else {
+				current_ma = CURRENT_180_MA;
+			}
+			
+			/* Check dc first. DC is the priority charging port. */
+			if (chip->dc_present) {
+				if (chip->dc_psy_ma > current_ma) {
+					chip->dc_psy_ma = current_ma;
+					rc = smb135x_set_appropriate_current(chip, DC);
+					if (rc < 0)
+						dev_err(chip->dev, "Couldn't set DC ICL to %d rc = %d\n", chip->dc_psy_ma, rc);
+				}
+			} else if (chip->usb_present) {
+				if (chip->usb_aicl_reconfigured_ma > current_ma) {
+					chip->usb_aicl_reconfigured_ma = current_ma;
+				}
+			}
+		}
+		mutex_unlock(&chip->current_change_lock);
+		
+	}
+
 	return 0;
 }
 
@@ -2488,18 +2797,31 @@ static int handle_dc_removal(struct smb135x_chg *chip)
 
 	if (chip->dc_psy_type != -EINVAL)
 		power_supply_set_online(&chip->dc_psy, chip->dc_present);
+
+	chip->aicl_reconfigured = false;
+	chip->usb_aicl_reconfigured_ma = OEM_MAX_USB_INPUT_CURRENT;
 	return 0;
 }
 
 #define DCIN_UNSUSPEND_DELAY_MS		1000
 static int handle_dc_insertion(struct smb135x_chg *chip)
 {
+	int rc;
+
 	if (chip->dc_psy_type == POWER_SUPPLY_TYPE_WIRELESS)
 		schedule_delayed_work(&chip->wireless_insertion_work,
 			msecs_to_jiffies(DCIN_UNSUSPEND_DELAY_MS));
 	if (chip->dc_psy_type != -EINVAL)
 		power_supply_set_online(&chip->dc_psy,
 						chip->dc_present);
+
+	/* smb135x issue11 WA */
+	mutex_lock(&chip->current_change_lock);
+	chip->dc_psy_ma = chip->init_dc_psy_ma;
+	rc = smb135x_set_appropriate_current(chip, DC);
+	if (rc < 0)
+		dev_err(chip->dev, "Couldn't set dc current to %d rc = %d\n", chip->dc_psy_ma, rc);
+	mutex_unlock(&chip->current_change_lock);
 
 	return 0;
 }
@@ -2515,7 +2837,9 @@ static int dcin_uv_handler(struct smb135x_chg *chip, u8 rt_stat)
 	 * should be marked removed
 	 */
 	bool dc_present = !rt_stat;
+	int rc;
 
+	chip->dc_uv = !!rt_stat;
 	pr_debug("chip->dc_present = %d dc_present = %d\n",
 			chip->dc_present, dc_present);
 
@@ -2523,12 +2847,36 @@ static int dcin_uv_handler(struct smb135x_chg *chip, u8 rt_stat)
 		/* dc removed */
 		chip->dc_present = dc_present;
 		handle_dc_removal(chip);
+		chip->dc_health = POWER_SUPPLY_HEALTH_UNKNOWN;
+		oem_clear_done_batt_full(chip);
+		oem_set_chg_wakelock(chip, 0);
+#ifdef CONFIG_OEM_BMS
+		oem_bms_set_full_suppress(false);
+		pr_info("charger removal clear full_suppress\n");
+		oem_recharge_flag_init(chip);
+		cancel_delayed_work_sync(&chip->oem_recharge_work);
+#endif
 	}
 
 	if (!chip->dc_present && dc_present) {
 		/* dc inserted */
+		/* smb135x issue11 WA */
+		mutex_lock(&chip->current_change_lock);
+		chip->dc_psy_ma = 300;
+		rc = smb135x_set_appropriate_current(chip, DC);
+		if (rc < 0)
+			dev_err(chip->dev, "Couldn't set dc current to %d rc = %d\n", chip->dc_psy_ma, rc);
+		mutex_unlock(&chip->current_change_lock);
+		
 		chip->dc_present = dc_present;
+		oem_set_chg_wakelock(chip, 1);
 		handle_dc_insertion(chip);
+		chip->dc_health = POWER_SUPPLY_HEALTH_GOOD;
+
+		if (!chip->batt_present) {
+			pr_debug("battery missing detect\n");
+			oem_chg_battery_removal(chip);
+		}
 	}
 
 	return 0;
@@ -2542,21 +2890,26 @@ static int dcin_ov_handler(struct smb135x_chg *chip, u8 rt_stat)
 	 */
 	bool dc_present = !rt_stat;
 
-	pr_debug("chip->dc_present = %d dc_present = %d\n",
-			chip->dc_present, dc_present);
-
-	chip->dc_ov = !!rt_stat;
+	pr_debug("OV status = %d\n", !!rt_stat);
 
 	if (chip->dc_present && !dc_present) {
 		/* dc removed */
 		chip->dc_present = dc_present;
 		handle_dc_removal(chip);
+		chip->dc_health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+		oem_set_chg_wakelock(chip, 0);
 	}
 
 	if (!chip->dc_present && dc_present) {
-		/* dc inserted */
-		chip->dc_present = dc_present;
-		handle_dc_insertion(chip);
+		if (!chip->dc_uv) {
+			/* dc inserted */
+			chip->dc_present = dc_present;
+			oem_set_chg_wakelock(chip, 1);
+			handle_dc_insertion(chip);
+			chip->dc_health = POWER_SUPPLY_HEALTH_GOOD;
+		} else {
+			pr_debug("DC unplugged from OV\n");
+		}
 	}
 	return 0;
 }
@@ -2564,12 +2917,18 @@ static int dcin_ov_handler(struct smb135x_chg *chip, u8 rt_stat)
 static int handle_usb_removal(struct smb135x_chg *chip)
 {
 	if (chip->usb_psy) {
-		pr_debug("setting usb psy type = %d\n",
-				POWER_SUPPLY_TYPE_UNKNOWN);
-		power_supply_set_supply_type(chip->usb_psy,
-				POWER_SUPPLY_TYPE_UNKNOWN);
+		if (chip->usb_ov) {
+			pr_debug("setting usb psy type = %d\n", POWER_SUPPLY_TYPE_UNKNOWN);
+			power_supply_set_supply_type(chip->usb_psy, POWER_SUPPLY_TYPE_UNKNOWN);
+		}
 		pr_debug("setting usb psy present = %d\n", chip->usb_present);
 		power_supply_set_present(chip->usb_psy, chip->usb_present);
+		chip->aicl_reconfigured = false;
+		chip->usb_aicl_reconfigured_ma = OEM_MAX_USB_INPUT_CURRENT;
+		if (chip->chg_enabled) {
+			pr_debug("setting usb psy online to false\n");
+			power_supply_set_online(chip->usb_psy, false);
+		}
 	}
 	return 0;
 }
@@ -2611,6 +2970,10 @@ static int handle_usb_insertion(struct smb135x_chg *chip)
 		power_supply_set_supply_type(chip->usb_psy, usb_supply_type);
 		pr_debug("setting usb psy present = %d\n", chip->usb_present);
 		power_supply_set_present(chip->usb_psy, chip->usb_present);
+		if (chip->chg_enabled) {
+			pr_debug("setting usb psy online to true\n");
+			power_supply_set_online(chip->usb_psy, true);
+		}
 	}
 	return 0;
 }
@@ -2629,6 +2992,7 @@ static int usbin_uv_handler(struct smb135x_chg *chip, u8 rt_stat)
 	bool usb_present = !rt_stat;
 	union power_supply_propval prop = {0, };
 
+	chip->usb_uv = !!rt_stat;
 	pr_debug("chip->usb_present = %d usb_present = %d\n",
 			chip->usb_present, usb_present);
 	if (chip->usb_psy && !chip->usb_psy->get_property(chip->usb_psy,
@@ -2638,6 +3002,20 @@ static int usbin_uv_handler(struct smb135x_chg *chip, u8 rt_stat)
 				/* For DCP and HVDCP removing */
 				chip->usb_present = usb_present;
 				handle_usb_removal(chip);
+				power_supply_set_health_state(chip->usb_psy, POWER_SUPPLY_HEALTH_UNKNOWN);
+				oem_clear_done_batt_full(chip);
+				oem_set_chg_wakelock(chip, 0);
+#ifdef CONFIG_OEM_BMS
+				oem_bms_set_full_suppress(false);
+				pr_info("charger removal clear full_suppress\n");
+				oem_recharge_flag_init(chip);
+				cancel_delayed_work_sync(&chip->oem_recharge_work);
+#endif
+			}
+		} else {
+			if (chip->usb_present && !usb_present) {
+				pr_debug("scheduled oem_src_detect_workd\n");
+				schedule_delayed_work(&chip->oem_src_detect_work, msecs_to_jiffies(OEM_SRC_DETECT_WORK_MS));
 			}
 		}
 	}
@@ -2654,19 +3032,25 @@ static int usbin_ov_handler(struct smb135x_chg *chip, u8 rt_stat)
 	bool usb_present = !rt_stat;
 	int health;
 
-	pr_debug("chip->usb_present = %d usb_present = %d\n",
-			chip->usb_present, usb_present);
+	chip->usb_ov = !!rt_stat;
+	pr_debug("OV status = %d\n", !!rt_stat);
 	if (chip->usb_present && !usb_present) {
 		/* USB removed */
 		chip->usb_present = usb_present;
 		handle_usb_removal(chip);
+		oem_set_chg_wakelock(chip, 0);
 	} else if (!chip->usb_present && usb_present) {
-		/* USB inserted */
-		chip->usb_present = usb_present;
-		handle_usb_insertion(chip);
+		if (!chip->usb_uv) {
+			/* USB inserted */
+			chip->usb_present = usb_present;
+			oem_set_chg_wakelock(chip, 1);
+			handle_usb_insertion(chip);
+		} else {
+			pr_debug("Charger unplugged from OV\n");
+		}
 	}
 
-	if (chip->usb_psy) {
+	if (chip->usb_psy && !chip->usb_uv) {
 		health = rt_stat ? POWER_SUPPLY_HEALTH_OVERVOLTAGE
 					: POWER_SUPPLY_HEALTH_GOOD;
 		power_supply_set_health_state(chip->usb_psy, health);
@@ -2692,10 +3076,17 @@ static int src_detect_handler(struct smb135x_chg *chip, u8 rt_stat)
 	pr_debug("chip->usb_present = %d usb_present = %d\n",
 			chip->usb_present, usb_present);
 
-	if (!chip->usb_present && usb_present) {
+	if (!chip->usb_present && usb_present && !chip->usb_ov) {
 		/* USB inserted */
 		chip->usb_present = usb_present;
+		oem_set_chg_wakelock(chip, 1);
 		handle_usb_insertion(chip);
+		power_supply_set_health_state(chip->usb_psy, POWER_SUPPLY_HEALTH_GOOD);
+
+		if (!chip->batt_present) {
+			pr_debug("battery missing detect\n");
+			oem_chg_battery_removal(chip);
+		}
 	} else if (chip->usb_psy && !chip->usb_psy->get_property(
 				chip->usb_psy, POWER_SUPPLY_PROP_TYPE,
 						&prop)) {
@@ -2705,6 +3096,16 @@ static int src_detect_handler(struct smb135x_chg *chip, u8 rt_stat)
 				/* CDP or SDP removed */
 				chip->usb_present = !chip->usb_present;
 				handle_usb_removal(chip);
+				power_supply_set_health_state(chip->usb_psy,
+						POWER_SUPPLY_HEALTH_UNKNOWN);
+				oem_clear_done_batt_full(chip);
+				oem_set_chg_wakelock(chip, 0);
+#ifdef CONFIG_OEM_BMS
+				oem_bms_set_full_suppress(false);
+				pr_info("charger removal clear full_suppress\n");
+				oem_recharge_flag_init(chip);
+				cancel_delayed_work_sync(&chip->oem_recharge_work);
+#endif
 			}
 	}
 
@@ -2812,9 +3213,11 @@ static struct irq_handler_info handlers[] = {
 			},
 			{
 				.name		= "aicl_done",
+				.smb_irq	= aicl_done_handler,
 			},
 			{
 				.name		= "battery_ov",
+				.smb_irq	= battery_ov_handler,
 			},
 		},
 	},
@@ -3233,6 +3636,10 @@ static void dump_regs(struct smb135x_chg *chip)
 {
 }
 #endif
+
+#define UPDATE_IRQ_STAT(irq_reg, value) \
+		handlers[irq_reg - IRQ_A_REG].prev_val = value
+
 static int determine_initial_status(struct smb135x_chg *chip)
 {
 	int rc;
@@ -3251,6 +3658,8 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		dev_err(chip->dev, "Couldn't read irq b rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_B_REG, reg);
+#ifdef QUALCOMM_ORIGINAL
 	if (reg & IRQ_B_BATT_TERMINAL_BIT || reg & IRQ_B_BATT_MISSING_BIT)
 		chip->batt_present = false;
 	rc = smb135x_read(chip, STATUS_4_REG, &reg);
@@ -3261,13 +3670,14 @@ static int determine_initial_status(struct smb135x_chg *chip)
 	/* treat battery gone if less than 2V */
 	if (reg & BATT_LESS_THAN_2V)
 		chip->batt_present = false;
-
+#endif
 	rc = smb135x_read(chip, IRQ_A_REG, &reg);
 	if (rc < 0) {
 		dev_err(chip->dev, "Couldn't read irq A rc = %d\n", rc);
 		return rc;
 	}
-
+	UPDATE_IRQ_STAT(IRQ_A_REG, reg);
+#ifdef QUALCOMM_ORIGINAL
 	if (reg & IRQ_A_HOT_HARD_BIT)
 		chip->batt_hot = true;
 	if (reg & IRQ_A_COLD_HARD_BIT)
@@ -3276,12 +3686,14 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		chip->batt_warm = true;
 	if (reg & IRQ_A_COLD_SOFT_BIT)
 		chip->batt_cool = true;
+#endif
 
 	rc = smb135x_read(chip, IRQ_C_REG, &reg);
 	if (rc < 0) {
-		dev_err(chip->dev, "Couldn't read irq A rc = %d\n", rc);
+		dev_err(chip->dev, "Couldn't read irq C rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_C_REG, reg);
 	if (reg & IRQ_C_TERM_BIT)
 		chip->chg_done_batt_full = true;
 
@@ -3290,9 +3702,29 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		dev_err(chip->dev, "Couldn't read irq E rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_E_REG, reg);
+	chip->usb_uv = !!(reg & IRQ_E_USB_UV_BIT);
 	chip->usb_present = !(reg & IRQ_E_USB_OV_BIT)
 				&& !(reg & IRQ_E_USB_UV_BIT);
+	chip->dc_uv = !!(reg & IRQ_E_DC_UV_BIT);
 	chip->dc_present = !(reg & IRQ_E_DC_OV_BIT) && !(reg & IRQ_E_DC_UV_BIT);
+	oem_set_chg_wakelock(chip, chip->usb_present);
+	oem_set_chg_wakelock(chip, chip->dc_present);
+	if (chip->usb_psy) {
+		if (reg & IRQ_E_USB_OV_BIT)
+			power_supply_set_health_state(chip->usb_psy,
+					POWER_SUPPLY_HEALTH_OVERVOLTAGE);
+		else if (!(reg & IRQ_E_USB_UV_BIT))
+			power_supply_set_health_state(chip->usb_psy,
+						POWER_SUPPLY_HEALTH_GOOD);
+	}
+
+	if (chip->dc_psy_type != -EINVAL) {
+		if (reg & IRQ_E_DC_OV_BIT)
+			chip->dc_health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+		else if (!(reg & IRQ_E_DC_UV_BIT))
+			chip->dc_health = POWER_SUPPLY_HEALTH_GOOD;
+	}
 
 	if (chip->usb_present)
 		handle_usb_insertion(chip);
@@ -3319,6 +3751,32 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		power_supply_set_usb_otg(chip->usb_psy,
 			chip->usb_slave_present);
 	}
+
+	rc = smb135x_read(chip, IRQ_D_REG, &reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't read irq D rc = %d\n", rc);
+		return rc;
+	}
+	UPDATE_IRQ_STAT(IRQ_D_REG, reg);
+
+	if (reg & IRQ_D_BATTERY_OV_BIT)
+		chip->oem_battery_ov = true;
+
+
+	rc = smb135x_read(chip, IRQ_F_REG, &reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't read irq F rc = %d\n", rc);
+		return rc;
+	}
+	UPDATE_IRQ_STAT(IRQ_F_REG, reg);
+
+	rc = smb135x_read(chip, IRQ_G_REG, &reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't read irq G rc = %d\n", rc);
+		return rc;
+	}
+	UPDATE_IRQ_STAT(IRQ_G_REG, reg);
+
 	return 0;
 }
 
@@ -3389,7 +3847,7 @@ static int smb135x_hw_init(struct smb135x_chg *chip)
 
 	/* set bit 0 = 100mA bit 1 = 500mA and set register control */
 	rc = smb135x_masked_write(chip, CFG_E_REG,
-			POLARITY_100_500_BIT | USB_CTRL_BY_PIN_BIT,
+			POLARITY_100_500_BIT | USB_CTRL_BY_PIN_BIT | HVDCP_EN_BIT,
 			POLARITY_100_500_BIT);
 	if (rc < 0) {
 		dev_err(chip->dev, "Couldn't set usbin cfg rc=%d\n", rc);
@@ -3480,6 +3938,32 @@ static int smb135x_hw_init(struct smb135x_chg *chip)
 		}
 	}
 
+
+	rc = smb135x_masked_write(chip, CFG_A_REG,
+				DCIN_ADAPTER_ALLOW_MASK, 0);
+	if (rc < 0) {
+		dev_err(chip->dev, "cannot write to config a rc = %d\n", rc);
+	}
+	
+	rc = smb135x_masked_write(chip, CFG_C_REG,
+				USBIN_ADAPTER_ALLOW_MASK, 0);
+	if (rc < 0) {
+		dev_err(chip->dev, "cannot write to config c rc = %d\n", rc);
+	}
+	
+	rc = smb135x_masked_write(chip, CFG_11_REG,
+				PRIORITY_BIT | OTHERCHARGER_CURRENT_LIMIT_BIT, 0);
+	if (rc < 0) {
+		dev_err(chip->dev, "cannot write to config 11 rc = %d\n", rc);
+	}
+	
+	rc = smb135x_masked_write(chip, CFG_18_REG,
+				CHG_OK_EN_BIT | CHG_VCHG_PAON_BIT, 0);
+	if (rc < 0) {
+		dev_err(chip->dev, "cannot write to config 18 rc = %d\n", rc);
+	}
+
+
 	/* set the safety time voltage */
 	if (chip->safety_time != -EINVAL) {
 		if (chip->safety_time == 0) {
@@ -3540,7 +4024,7 @@ static int smb135x_hw_init(struct smb135x_chg *chip)
 		if (rc < 0) {
 			dev_err(chip->dev, "Couldn't set fastchg current = %d\n",
 									rc);
-			return rc;
+			goto free_regulator;
 		}
 	}
 
@@ -3580,18 +4064,22 @@ static int smb135x_hw_init(struct smb135x_chg *chip)
 			| IRQ_BAT_HOT_COLD_SOFT_BIT
 			| IRQ_OTG_OVER_CURRENT_BIT
 			| IRQ_INTERNAL_TEMPERATURE_BIT
-			| IRQ_USBIN_UV_BIT);
+			| IRQ_USBIN_OV_BIT
+			| IRQ_USBIN_UV_BIT
+			| IRQ_AICL_DONE_BIT);
 
 		rc |= smb135x_write(chip, IRQ2_CFG_REG,
 			IRQ2_SAFETY_TIMER_BIT
 			| IRQ2_CHG_ERR_BIT
 			| IRQ2_CHG_PHASE_CHANGE_BIT
-			| IRQ2_POWER_OK_BIT
 			| IRQ2_BATT_MISSING_BIT
 			| IRQ2_VBAT_LOW_BIT);
 
-		rc |= smb135x_write(chip, IRQ3_CFG_REG, IRQ3_SRC_DETECT_BIT
-				| IRQ3_DCIN_UV_BIT | IRQ3_RID_DETECT_BIT);
+		rc |= smb135x_write(chip, IRQ3_CFG_REG,
+			IRQ3_SRC_DETECT_BIT
+			| IRQ3_DCIN_OV_BIT
+			| IRQ3_DCIN_UV_BIT
+			| IRQ3_RID_DETECT_BIT);
 		if (rc < 0) {
 			dev_err(chip->dev, "Couldn't set irq enable rc = %d\n",
 					rc);
@@ -3614,6 +4102,11 @@ static int smb135x_hw_init(struct smb135x_chg *chip)
 		}
 	}
 
+	rc = smb135x_write(chip, CFG_1D_REG, 0x42);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't write compensation data1 rc = %d\n",rc);
+	}
+
 	/*
 	 * on some devices the battery is powered via external sources which
 	 * could raise its voltage above the float voltage. smb135x chips go
@@ -3623,25 +4116,43 @@ static int smb135x_hw_init(struct smb135x_chg *chip)
 	 */
 
 	if (chip->soft_vfloat_comp_disabled) {
-		mask = HOT_SOFT_VFLOAT_COMP_EN_BIT
+		reg = 0;
+	} else {
+		reg = HOT_SOFT_VFLOAT_COMP_EN_BIT | COLD_SOFT_VFLOAT_COMP_EN_BIT;
+	}
+	
+	mask = HOT_SOFT_VFLOAT_COMP_EN_BIT
 				| COLD_SOFT_VFLOAT_COMP_EN_BIT;
-		rc = smb135x_masked_write(chip, CFG_1A_REG, mask, 0);
-		if (rc < 0) {
-			dev_err(chip->dev, "Couldn't disable soft vfloat rc = %d\n",
-					rc);
-			goto free_regulator;
-		}
+	rc = smb135x_masked_write(chip, CFG_1A_REG, mask, reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't set soft vfloat rc = %d\n",
+				rc);
+		goto free_regulator;
 	}
 
 	if (chip->soft_current_comp_disabled) {
-		mask = HOT_SOFT_CURRENT_COMP_EN_BIT
-				| COLD_SOFT_CURRENT_COMP_EN_BIT;
-		rc = smb135x_masked_write(chip, CFG_1A_REG, mask, 0);
-		if (rc < 0) {
-			dev_err(chip->dev, "Couldn't disable soft current rc = %d\n",
-					rc);
-			goto free_regulator;
-		}
+		reg = 0;
+	} else {
+		reg = HOT_SOFT_CURRENT_COMP_EN_BIT | COLD_SOFT_CURRENT_COMP_EN_BIT;
+	}
+	
+	mask = HOT_SOFT_CURRENT_COMP_EN_BIT
+			| COLD_SOFT_CURRENT_COMP_EN_BIT;
+	rc = smb135x_masked_write(chip, CFG_1A_REG, mask, reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't set soft current rc = %d\n",
+				rc);
+		goto free_regulator;
+	}
+
+	/* JEITA temperature hard limit disable */
+	reg = OEM_JEITA_TEMP_HARD_LIMIT;
+	mask = OEM_JEITA_TEMP_HARD_LIMIT;
+	rc = smb135x_masked_write(chip, CFG_1A_REG, mask, reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't set JEITA hard limit disable rc = %d\n",
+				rc);
+		goto free_regulator;
 	}
 
 	/*
@@ -3742,7 +4253,11 @@ static int smb_parse_dt(struct smb135x_chg *chip)
 			dev_err(chip->dev, "Bad dc mA %d\n", chip->dc_psy_ma);
 			return -EINVAL;
 		}
+		
+		chip->init_dc_psy_ma = chip->dc_psy_ma;
 	}
+
+	chip->usb_aicl_reconfigured_ma = OEM_MAX_USB_INPUT_CURRENT;
 
 	rc = of_property_read_u32(node, "qcom,recharge-thresh-mv",
 						&chip->resume_delta_mv);
@@ -3841,6 +4356,17 @@ static int smb_parse_dt(struct smb135x_chg *chip)
 		}
 	}
 
+#ifdef CONFIG_OEM_BMS
+	if (oem_bms_get_deterioration_status() >= DETERIORATION_STATUS_GOOD
+			&& !oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_01, 6)) {
+		rc = of_property_read_u32(node, "oem,deterioration-vfloat-mv",
+							&chip->vfloat_mv);
+		if (rc < 0) {
+			pr_err("deterioration-float-voltage-mv property missing.\n");
+		}
+	}
+#endif
+
 	if (of_find_property(node, "usb-pullup-supply", NULL)) {
 		/* get the data line pull-up regulator */
 		chip->usb_pullup_vreg = devm_regulator_get(chip->dev,
@@ -3850,6 +4376,8 @@ static int smb_parse_dt(struct smb135x_chg *chip)
 	}
 
 	chip->pinctrl_state_name = of_get_property(node, "pinctrl-names", NULL);
+
+	oem_smb_parse_dt(chip);
 
 	return 0;
 }
@@ -3980,6 +4508,24 @@ static int smb135x_main_charger_probe(struct i2c_client *client,
 	chip->client = client;
 	chip->dev = &client->dev;
 
+	/* early for VADC get, defer probe if needed */
+	chip->vadc_dev = qpnp_get_vadc(chip->dev, "chg");
+	if (IS_ERR(chip->vadc_dev)) {
+		rc = PTR_ERR(chip->vadc_dev);
+		if (rc != -EPROBE_DEFER)
+			pr_err("vadc property missing\n");
+		return rc;
+	}
+
+	/* using adc_tm for implementing pmic therm */
+	chip->adc_tm_dev = qpnp_get_adc_tm(chip->dev, "chg");
+	if (IS_ERR(chip->adc_tm_dev)) {
+		rc = PTR_ERR(chip->adc_tm_dev);
+		if (rc != -EPROBE_DEFER)
+			pr_err("adc_tm property missing\n");
+		return rc;
+	}
+
 	rc = smb_parse_dt(chip);
 	if (rc < 0) {
 		dev_err(&client->dev, "Unable to parse DT nodes\n");
@@ -3997,6 +4543,9 @@ static int smb135x_main_charger_probe(struct i2c_client *client,
 
 	INIT_DELAYED_WORK(&chip->wireless_insertion_work,
 					wireless_insertion_work);
+
+	INIT_DELAYED_WORK(&chip->oem_src_detect_work, oem_src_detect_retry_work);
+
 
 	mutex_init(&chip->path_suspend_lock);
 	mutex_init(&chip->current_change_lock);
@@ -4019,6 +4568,8 @@ static int smb135x_main_charger_probe(struct i2c_client *client,
 
 	dump_regs(chip);
 
+	wake_lock_init(&oem_charge_wake_lock, WAKE_LOCK_SUSPEND, "oem_charge");
+
 	rc = smb135x_regulator_init(chip);
 	if  (rc) {
 		dev_err(&client->dev,
@@ -4040,6 +4591,10 @@ static int smb135x_main_charger_probe(struct i2c_client *client,
 		goto free_regulator;
 	}
 
+	if(oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_03, 2) && chip->usb_present){
+		smb135x_set_usb_chg_current(chip, OEM_FACTORY_USB_ICL);
+	}
+
 	chip->batt_psy.name		= "battery";
 	chip->batt_psy.type		= POWER_SUPPLY_TYPE_BATTERY;
 	chip->batt_psy.get_property	= smb135x_battery_get_property;
@@ -4048,13 +4603,17 @@ static int smb135x_main_charger_probe(struct i2c_client *client,
 	chip->batt_psy.num_properties  = ARRAY_SIZE(smb135x_battery_properties);
 	chip->batt_psy.external_power_changed = smb135x_external_power_changed;
 	chip->batt_psy.property_is_writeable = smb135x_battery_is_writeable;
-
+#ifdef QUALCOMM_ORIGINAL
 	if (chip->bms_controlled_charging) {
 		chip->batt_psy.supplied_to	= pm_batt_supplied_to;
 		chip->batt_psy.num_supplicants	=
 					ARRAY_SIZE(pm_batt_supplied_to);
 	}
-
+#else
+	chip->batt_psy.supplied_to	= pm_batt_supplied_to;
+	chip->batt_psy.num_supplicants	=
+				ARRAY_SIZE(pm_batt_supplied_to);
+#endif
 	rc = power_supply_register(chip->dev, &chip->batt_psy);
 	if (rc < 0) {
 		dev_err(&client->dev,
@@ -4065,6 +4624,7 @@ static int smb135x_main_charger_probe(struct i2c_client *client,
 	if (chip->dc_psy_type != -EINVAL) {
 		chip->dc_psy.name		= "dc";
 		chip->dc_psy.type		= chip->dc_psy_type;
+		chip->dc_psy.set_property	= smb135x_dc_set_property;
 		chip->dc_psy.get_property	= smb135x_dc_get_property;
 		chip->dc_psy.properties		= smb135x_dc_properties;
 		chip->dc_psy.num_properties = ARRAY_SIZE(smb135x_dc_properties);
@@ -4094,7 +4654,36 @@ static int smb135x_main_charger_probe(struct i2c_client *client,
 		enable_irq_wake(client->irq);
 	}
 
+	if (!chip->jeita_supported) {
+		/* add hot/cold temperature monitor */
+		chip->adc_param.low_temp = chip->cold_bat_decidegc;
+		chip->adc_param.high_temp = chip->hot_bat_decidegc;
+	} else {
+		chip->adc_param.low_temp = chip->cool_bat_decidegc;
+		chip->adc_param.high_temp = chip->warm_bat_decidegc;
+	}
+	chip->adc_param.timer_interval = ADC_MEAS2_INTERVAL_1S;
+	chip->adc_param.state_request = ADC_TM_HIGH_LOW_THR_ENABLE;
+	chip->adc_param.btm_ctx = chip;
+	chip->adc_param.threshold_notification =
+			oem_smb_chg_adc_notification;
+	chip->adc_param.channel = LR_MUX1_BATT_THERM;
+
+	/* update battery missing info in tm_channel_measure*/
+	rc = qpnp_adc_tm_channel_measure(chip->adc_tm_dev,
+						&chip->adc_param);
+	if (rc)
+		pr_err("requesting ADC error %d\n", rc);
+
 	create_debugfs_entries(chip);
+
+	the_chip = chip;
+
+#ifdef CONFIG_OEM_BMS
+	INIT_DELAYED_WORK(&chip->oem_recharge_work, oem_recharge_check);
+	oem_recharge_flag_init(chip);
+#endif
+
 	dev_info(chip->dev, "SMB135X version = %s revision = %s successfully probed batt=%d dc = %d usb = %d\n",
 			version_str[chip->version],
 			revision_str[chip->revision],
@@ -4251,7 +4840,8 @@ static int smb135x_suspend(struct device *dev)
 	}
 
 	/* enable only important IRQs */
-	rc = smb135x_write(chip, IRQ_CFG_REG, IRQ_USBIN_UV_BIT);
+	rc = smb135x_write(chip, IRQ_CFG_REG, IRQ_USBIN_UV_BIT
+						| IRQ_AICL_DONE_BIT);
 	if (rc < 0)
 		dev_err(chip->dev, "Couldn't set irq_cfg rc = %d\n", rc);
 
@@ -4306,6 +4896,13 @@ static int smb135x_resume(struct device *dev)
 			dev_err(chip->dev,
 				"Couldn't restore irq cfg regs rc=%d\n", rc);
 	}
+
+	/* Disable POWER_OK IRQ */
+	rc = smb135x_masked_write(chip, IRQ2_CFG_REG,
+			IRQ2_POWER_OK_BIT, 0);
+	if (rc < 0)
+		dev_err(chip->dev, "Couldn't disable IRQ2_POWER_OK_BIT rc = %d\n", rc);
+
 	mutex_lock(&chip->irq_complete);
 	chip->resume_completed = true;
 	if (chip->irq_waiting) {
@@ -4347,6 +4944,31 @@ static void smb135x_shutdown(struct i2c_client *client)
 	}
 }
 
+
+/*================================================================ */
+static void oem_set_chg_wakelock(struct smb135x_chg *chip, bool enable)
+{
+	if (enable) {
+		wake_lock(&oem_charge_wake_lock);
+		pr_debug("SET wakelock \n");
+	} else {
+		if (!chip->usb_present && !chip->dc_present) {
+			wake_unlock(&oem_charge_wake_lock);
+			pr_debug("CLEAR wakelock \n");
+		}
+	}
+}
+
+static void oem_clear_done_batt_full(struct smb135x_chg *chip)
+{
+	if (!chip->usb_present && !chip->dc_present) {
+		chip->chg_done_batt_full = false;
+	}
+}
+/*================================================================ */
+
+
+
 static struct i2c_driver smb135x_charger_driver = {
 	.driver		= {
 		.name		= "smb135x-charger",
@@ -4361,6 +4983,452 @@ static struct i2c_driver smb135x_charger_driver = {
 };
 
 module_i2c_driver(smb135x_charger_driver);
+
+
+#ifdef CONFIG_OEM_BMS
+static void oem_recharge_flag_init(struct smb135x_chg *chip)
+{
+	chip->oem_fake_batt_full = false;
+	chip->oem_full_check_flag = false;
+	chip->oem_recharge_once_flag = true;
+}
+
+static void oem_recharge_enable(struct smb135x_chg *chip)
+{
+	int rc = 0;
+	
+	chip->oem_fake_batt_full = true;
+	chip->oem_recharge_once_flag = false;
+	
+	rc = smb135x_charging_enable(chip, false);
+	if (rc < 0) {
+		pr_err("Couldn't set charging disable rc = %d\n", rc);
+	}
+	
+	msleep(100);
+	
+	rc = smb135x_charging_enable(chip, true);
+	if (rc < 0) {
+		pr_err("Couldn't set charging enable rc = %d\n", rc);
+	}
+}
+
+#define OEM_RECHARGE_CHECK_CYCLE_MS   500
+#define OEM_RECHARGE_HIGH_TEMP 350
+#define OEM_RECHARGE_LOW_TEMP 150
+
+static void oem_recharge_check(struct work_struct *work)
+{
+	int temp = 0, status = 0;
+	struct smb135x_chg *chip = container_of(work,
+				struct smb135x_chg, oem_recharge_work.work);
+	union power_supply_propval prop = {0,};
+	int rc = -1;
+
+	if (chip->bms_psy_name && !chip->bms_psy)
+    	chip->bms_psy = power_supply_get_by_name((char *)chip->bms_psy_name);
+
+	if (chip->bms_psy)
+    	rc = chip->bms_psy->get_property(chip->bms_psy, POWER_SUPPLY_PROP_TEMP, &prop);
+
+	if (rc < 0)
+		pr_err("could not read batt_temp property, rc=%d\n", rc);
+	else
+		temp = prop.intval;
+
+	pr_debug("batt_temp = %d\n", temp);
+
+	status = smb135x_get_prop_batt_status(chip);
+
+	if (temp <= OEM_RECHARGE_HIGH_TEMP && temp >= OEM_RECHARGE_LOW_TEMP
+		&& !(status == POWER_SUPPLY_STATUS_CHARGING)
+		&& chip->oem_full_check_flag){
+		pr_debug("Recharging start\n");
+		oem_recharge_enable(chip);
+	}else if (chip->oem_full_check_flag){
+		pr_debug("Loop until the start recharging\n");
+		schedule_delayed_work(&chip->oem_recharge_work,
+			msecs_to_jiffies(OEM_RECHARGE_CHECK_CYCLE_MS));
+	}else{
+		pr_debug("Initialize because of an unexpected state\n");
+		oem_recharge_flag_init(chip);
+	}
+}
+
+void oem_recharge_check_start(void)
+{
+	if (the_chip->oem_recharge_once_flag){
+		pr_debug("Recharge check start\n");
+		the_chip->oem_full_check_flag = true;
+		schedule_delayed_work(&the_chip->oem_recharge_work, 0);
+	}
+}
+EXPORT_SYMBOL(oem_recharge_check_start);
+#endif
+
+static void oem_smb_parse_dt(struct smb135x_chg *chip)
+{
+	int rc;
+	int batt_present_degree_negative;
+	struct device_node *node = chip->dev->of_node;
+
+	rc = of_property_read_u32(node, "qcom,cold-bat-decidegc",
+						&chip->cold_bat_decidegc);
+	if (rc < 0)
+		chip->cold_bat_decidegc = -EINVAL;
+
+	rc = of_property_read_u32(node, "qcom,hot-bat-decidegc",
+						&chip->hot_bat_decidegc);
+	if (rc < 0)
+		chip->hot_bat_decidegc = -EINVAL;
+
+	rc = of_property_read_u32(node, "qcom,warm-bat-decidegc",
+						&chip->warm_bat_decidegc);
+
+	rc |= of_property_read_u32(node, "qcom,cool-bat-decidegc",
+						&chip->cool_bat_decidegc);
+
+	if (!rc) {
+		rc = of_property_read_u32(node, "qcom,cool-bat-mv",
+						&chip->cool_bat_mv);
+
+		rc |= of_property_read_u32(node, "qcom,warm-bat-mv",
+						&chip->warm_bat_mv);
+
+		rc |= of_property_read_u32(node, "qcom,cool-bat-ma",
+						&chip->cool_bat_ma);
+
+		rc |= of_property_read_u32(node, "qcom,warm-bat-ma",
+						&chip->warm_bat_ma);
+		if (rc)
+			chip->jeita_supported = false;
+		else
+			chip->jeita_supported = true;
+	}
+
+	rc = of_property_read_u32(node, "qcom,bat-present-decidegc",
+						&batt_present_degree_negative);
+	if (rc < 0)
+		chip->bat_present_decidegc = -EINVAL;
+	else
+		chip->bat_present_decidegc = -batt_present_degree_negative;
+
+	pr_debug("cold_bat_decidegc = %d, hot_bat_decidegc = %d, cool_bat_decidegc = %d, warm_bat_decidegc = %d\n",
+		chip->cold_bat_decidegc, chip->hot_bat_decidegc, chip->cool_bat_decidegc, chip->warm_bat_decidegc);
+	pr_debug("cool_bat_mv = %d, warm_bat_mv = %d, cool_bat_ma = %d, warm_bat_ma = %d\n",
+		chip->cool_bat_mv, chip->warm_bat_mv, chip->cool_bat_ma, chip->warm_bat_ma);
+	pr_debug("jeita_supported = %d\n", chip->jeita_supported);
+	pr_debug("bat_present_decidegc = %d\n", chip->bat_present_decidegc);
+}
+
+#define DEFAULT_TEMP 250
+static int oem_smb135x_get_prop_batt_temp(struct smb135x_chg *chip)
+{
+	int rc = 0;
+	struct qpnp_vadc_result results;
+
+	rc = qpnp_vadc_read(chip->vadc_dev, LR_MUX1_BATT_THERM, &results);
+	if (rc) {
+		pr_err("Unable to read batt temperature rc=%d\n", rc);
+		return DEFAULT_TEMP;
+	}
+
+	return (int)results.physical;
+}
+
+static int oem_smb135x_get_prop_battery_voltage_now(struct smb135x_chg *chip)
+{
+	int rc = 0;
+	struct qpnp_vadc_result results;
+
+	rc = qpnp_vadc_read(chip->vadc_dev, VBAT_SNS, &results);
+	if (rc) {
+		pr_err("Unable to read vbat rc=%d\n", rc);
+		return 0;
+	}
+	return results.physical;
+}
+
+static int oem_smb135x_chg_set_appropriate_battery_current(
+				struct smb135x_chg *chip)
+{
+	int rc;
+	unsigned int current_max = chip->fastchg_ma;
+
+	if (chip->batt_cool)
+		current_max =
+			min(current_max, chip->cool_bat_ma);
+	if (chip->batt_warm)
+		current_max =
+			min(current_max, chip->warm_bat_ma);
+
+	pr_debug("setting %dmA\n", current_max);
+	rc = smb135x_set_fastchg_current(chip, current_max);
+	if (rc)
+		dev_err(chip->dev,
+			"Couldn't set charging current rc = %d\n", rc);
+	return rc;
+}
+
+static int oem_smb135x_chg_set_appropriate_vddmax(
+				struct smb135x_chg *chip)
+{
+	int rc;
+	unsigned int vddmax = chip->vfloat_mv;
+
+	if (chip->batt_cool)
+		vddmax = min(vddmax, chip->cool_bat_mv);
+	if (chip->batt_warm)
+		vddmax = min(vddmax, chip->warm_bat_mv);
+
+	pr_debug("setting %dmV\n", vddmax);
+	rc = smb135x_float_voltage_set(chip, vddmax);
+	if (rc)
+		dev_err(chip->dev,
+			"Couldn't set float voltage rc = %d\n", rc);
+	return rc;
+}
+
+#define HYSTERESIS_DECIDEGC 20
+static void oem_smb_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
+{
+	struct smb135x_chg *chip = ctx;
+	bool bat_hot = 0, bat_cold = 0, bat_present = 0, bat_warm = 0,
+							bat_cool = 0;
+	int temp;
+	int rc;
+
+	if (state >= ADC_TM_STATE_NUM) {
+		pr_err("invallid state parameter %d\n", state);
+		return;
+	}
+
+	temp = oem_smb135x_get_prop_batt_temp(chip);
+
+	pr_debug("temp = %d state = %s\n", temp,
+				state == ADC_TM_WARM_STATE ? "hot" : "cold");
+
+	if (state == ADC_TM_WARM_STATE) {
+		if (temp >= chip->hot_bat_decidegc) {
+			bat_hot = true;
+			bat_warm = false;
+			bat_cold = false;
+			bat_cool = false;
+			bat_present = true;
+
+			chip->adc_param.low_temp =
+				chip->hot_bat_decidegc - HYSTERESIS_DECIDEGC;
+			chip->adc_param.state_request =
+				ADC_TM_COOL_THR_ENABLE;
+		} else if (temp >=
+			chip->warm_bat_decidegc && chip->jeita_supported) {
+			bat_hot = false;
+			bat_warm = true;
+			bat_cold = false;
+			bat_cool = false;
+			bat_present = true;
+
+			chip->adc_param.low_temp =
+				chip->warm_bat_decidegc - HYSTERESIS_DECIDEGC;
+			chip->adc_param.high_temp =
+				chip->hot_bat_decidegc;
+			chip->adc_param.state_request =
+					ADC_TM_HIGH_LOW_THR_ENABLE;
+		} else if (temp >=
+			chip->cool_bat_decidegc && chip->jeita_supported) {
+			bat_hot = false;
+			bat_warm = false;
+			bat_cold = false;
+			bat_cool = false;
+			bat_present = true;
+
+			chip->adc_param.low_temp =
+				chip->cool_bat_decidegc;
+			chip->adc_param.high_temp =
+				chip->warm_bat_decidegc;
+			chip->adc_param.state_request =
+					ADC_TM_HIGH_LOW_THR_ENABLE;
+		} else if (temp >=
+			chip->cold_bat_decidegc) {
+			bat_hot = false;
+			bat_warm = false;
+			bat_cold = false;
+			bat_cool = true;
+			bat_present = true;
+
+			chip->adc_param.low_temp =
+				chip->cold_bat_decidegc;
+			if (chip->jeita_supported)
+				chip->adc_param.high_temp =
+						chip->cool_bat_decidegc + HYSTERESIS_DECIDEGC;
+			else
+				chip->adc_param.high_temp =
+						chip->hot_bat_decidegc;
+			chip->adc_param.state_request =
+					ADC_TM_HIGH_LOW_THR_ENABLE;
+		} else if (!(chip->bat_present_decidegc == -EINVAL) &&
+				temp >= chip->bat_present_decidegc) {
+			bat_hot = false;
+			bat_warm = false;
+			bat_cold = true;
+			bat_cool = false;
+			bat_present = true;
+			chip->adc_param.low_temp =
+				chip->bat_present_decidegc;
+			chip->adc_param.high_temp =
+				chip->cold_bat_decidegc + HYSTERESIS_DECIDEGC;
+			chip->adc_param.state_request =
+					ADC_TM_HIGH_LOW_THR_ENABLE;
+		}
+	} else {
+		if (!(chip->bat_present_decidegc == -EINVAL) &&
+				temp <= chip->bat_present_decidegc) {
+			bat_cold = true;
+			bat_cool = false;
+			bat_hot = false;
+			bat_warm = false;
+			bat_present = false;
+			chip->adc_param.high_temp =
+				chip->bat_present_decidegc + HYSTERESIS_DECIDEGC;
+			chip->adc_param.state_request =
+				ADC_TM_WARM_THR_ENABLE;
+		} else if (temp <= chip->cold_bat_decidegc) {
+			bat_hot = false;
+			bat_warm = false;
+			bat_cold = true;
+			bat_cool = false;
+			bat_present = true;
+			chip->adc_param.high_temp =
+				chip->cold_bat_decidegc + HYSTERESIS_DECIDEGC;
+			/* add low_temp to enable batt present check */
+			chip->adc_param.low_temp =
+				chip->bat_present_decidegc;
+			chip->adc_param.state_request =
+				ADC_TM_HIGH_LOW_THR_ENABLE;
+		} else if (temp <= chip->cool_bat_decidegc &&
+					chip->jeita_supported) {
+			bat_hot = false;
+			bat_warm = false;
+			bat_cold = false;
+			bat_cool = true;
+			bat_present = true;
+			chip->adc_param.high_temp =
+				chip->cool_bat_decidegc + HYSTERESIS_DECIDEGC;
+			chip->adc_param.low_temp =
+				chip->cold_bat_decidegc;
+			chip->adc_param.state_request =
+				ADC_TM_HIGH_LOW_THR_ENABLE;
+		} else if (temp <= chip->warm_bat_decidegc &&
+					chip->jeita_supported) {
+			bat_hot = false;
+			bat_warm = false;
+			bat_cold = false;
+			bat_cool = false;
+			bat_present = true;
+			chip->adc_param.high_temp =
+				chip->warm_bat_decidegc;
+			chip->adc_param.low_temp =
+				chip->cool_bat_decidegc;
+			chip->adc_param.state_request =
+				ADC_TM_HIGH_LOW_THR_ENABLE;
+		} else if (temp <= chip->hot_bat_decidegc) {
+			bat_hot = false;
+			bat_warm = true;
+			bat_cold = false;
+			bat_cool = false;
+			bat_present = true;
+			chip->adc_param.high_temp =
+				chip->hot_bat_decidegc;
+			if (chip->jeita_supported)
+				chip->adc_param.low_temp =
+					chip->warm_bat_decidegc - HYSTERESIS_DECIDEGC;
+			else
+				chip->adc_param.low_temp =
+					chip->cold_bat_decidegc;
+			chip->adc_param.state_request =
+					ADC_TM_HIGH_LOW_THR_ENABLE;
+		}
+	}
+
+	if (bat_present) {
+		chip->batt_present = true;
+	} else {
+		chip->batt_present = false;
+		pr_debug("battery missing detect\n");
+		oem_chg_battery_removal(chip);
+	}
+
+	if (bat_hot ^ chip->batt_hot || bat_cold ^ chip->batt_cold) {
+		chip->batt_hot = bat_hot;
+		chip->batt_cold = bat_cold;
+		/* stop charging explicitly since we use PMIC thermal pin*/
+		if (bat_hot || bat_cold || !chip->batt_present) {
+			rc = smb135x_charging_enable(chip, false);
+			if (rc < 0) {
+				pr_err("Couldn't set charging disable rc = %d\n", rc);
+			}
+		} else {
+			rc = smb135x_charging_enable(chip, true);
+			if (rc < 0) {
+				pr_err("Couldn't set charging disable rc = %d\n", rc);
+			}
+		}
+	}
+
+	if ((chip->batt_warm ^ bat_warm || chip->batt_cool ^ bat_cool)
+						&& chip->jeita_supported) {
+		chip->batt_warm = bat_warm;
+		chip->batt_cool = bat_cool;
+		rc = oem_smb135x_chg_set_appropriate_battery_current(chip);
+		rc = oem_smb135x_chg_set_appropriate_vddmax(chip);
+	}
+
+	pr_debug("hot %d, cold %d, warm %d, cool %d, jeita supported %d, present %d, low = %d deciDegC, high = %d deciDegC\n",
+		chip->batt_hot, chip->batt_cold, chip->batt_warm,
+		chip->batt_cool, chip->jeita_supported, chip->batt_present,
+		chip->adc_param.low_temp, chip->adc_param.high_temp);
+	if (qpnp_adc_tm_channel_measure(chip->adc_tm_dev, &chip->adc_param))
+		pr_err("request ADC error\n");
+}
+
+static void oem_chg_battery_removal(struct smb135x_chg *chip)
+{
+	if ((chip->usb_present || chip->dc_present)
+			&& (!oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_01, 0))) {
+		pr_err("power off, detected a battery removal\n");
+		kernel_power_off();
+	}
+}
+
+static void
+oem_src_detect_retry_work(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct smb135x_chg *chip = container_of(dwork, struct smb135x_chg, oem_src_detect_work);
+
+	if (chip->usb_present) {
+		smb135x_chg_stat_handler(chip->client->irq, chip);
+	}
+
+}
+
+static void
+oem_smb_register_check(struct smb135x_chg *chip)
+{
+	int rc;
+	u8 reg;
+	bool reset_flag = false;
+
+	rc = __smb135x_read(chip, CMD_I2C_REG, &reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't read CMD_I2C rc = %d\n", rc);
+		return;
+	}
+
+	reset_flag = !(reg & ALLOW_VOLATILE_BIT);
+	pr_err("CMD_I2C_REG: 0x%02x = 0x%02x\n", CMD_I2C_REG, reg);
+	BUG_ON(reset_flag);
+}
 
 MODULE_DESCRIPTION("SMB135x Charger");
 MODULE_LICENSE("GPL v2");

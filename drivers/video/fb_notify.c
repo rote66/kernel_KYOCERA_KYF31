@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+/*
  *  linux/drivers/video/fb_notify.c
  *
  *  Copyright (C) 2006 Antonino Daplas <adaplas@pol.net>
@@ -36,12 +40,20 @@ int fb_unregister_client(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(fb_unregister_client);
 
+static int is_disp_ext_sub(struct fb_info *fb_info)
+{
+	return fb_info->node == 1;
+}
+
 /**
  * fb_notifier_call_chain - notify clients of fb_events
  *
  */
 int fb_notifier_call_chain(unsigned long val, void *v)
 {
+	if (is_disp_ext_sub(((struct fb_event *)v)->info)) {
+		return 0;
+	}
 	return blocking_notifier_call_chain(&fb_notifier_list, val, v);
 }
 EXPORT_SYMBOL_GPL(fb_notifier_call_chain);

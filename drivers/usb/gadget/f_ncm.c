@@ -15,6 +15,15 @@
  * (at your option) any later version.
  */
 
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
+
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/etherdevice.h>
@@ -104,8 +113,13 @@ static inline unsigned ncm_bitrate(struct usb_gadget *g)
  * If the host can group frames, allow it to do that, 16K is selected,
  * because it's used by default by the current linux host driver
  */
-#define NTB_DEFAULT_IN_SIZE	USB_CDC_NCM_NTB_MIN_IN_SIZE
+//#define NTB_DEFAULT_IN_SIZE	USB_CDC_NCM_NTB_MIN_IN_SIZE
+#define NTB_DEFAULT_IN_SIZE	65536
+#if 0
 #define NTB_OUT_SIZE		16384
+#else
+#define NTB_OUT_SIZE		USB_CDC_NCM_NTB_MIN_IN_SIZE
+#endif
 
 /*
  * skbs of size less than that will not be aligned
@@ -138,7 +152,15 @@ static struct usb_cdc_ncm_ntb_parameters ntb_parameters = {
  */
 
 #define NCM_STATUS_INTERVAL_MS		32
+#define LOG2_STATUS_INTERVAL_MSEC	5	/* 1 << 5 == 32 msec */
+#if 0
 #define NCM_STATUS_BYTECOUNT		16	/* 8 byte header + data */
+#else
+#define NCM_STATUS_BYTECOUNT		64	/* 8 byte header + data */
+#endif
+
+#define NCM_DOWN_LINK_BITRATE		100 * 1000 * 1000
+#define NCM_UP_LINK_BITRATE		50 * 1000 * 1000
 
 static struct usb_interface_assoc_descriptor ncm_iad_desc = {
 	.bLength =		sizeof ncm_iad_desc,
@@ -171,7 +193,11 @@ static struct usb_cdc_header_desc ncm_header_desc = {
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubType =	USB_CDC_HEADER_TYPE,
 
+#if 0
 	.bcdCDC =		cpu_to_le16(0x0110),
+#else
+	.bcdCDC =		cpu_to_le16(0x0120),
+#endif
 };
 
 static struct usb_cdc_union_desc ncm_union_desc = {
@@ -291,7 +317,11 @@ static struct usb_endpoint_descriptor hs_ncm_notify_desc = {
 	.bEndpointAddress =	USB_DIR_IN,
 	.bmAttributes =		USB_ENDPOINT_XFER_INT,
 	.wMaxPacketSize =	cpu_to_le16(NCM_STATUS_BYTECOUNT),
-	.bInterval =		USB_MS_TO_HS_INTERVAL(NCM_STATUS_INTERVAL_MS),
+#if 0
+	.bInterval =		LOG2_STATUS_INTERVAL_MSEC + 4,
+#else
+	.bInterval =		6,
+#endif
 };
 static struct usb_endpoint_descriptor hs_ncm_in_desc = {
 	.bLength =		USB_DT_ENDPOINT_SIZE,
@@ -457,7 +487,7 @@ static inline void ncm_reset_values(struct f_ncm *ncm)
 	ncm->port.header_len = 0;
 
 	ncm->port.fixed_out_len = le32_to_cpu(ntb_parameters.dwNtbOutMaxSize);
-	ncm->port.fixed_in_len = NTB_DEFAULT_IN_SIZE;
+	ncm->port.fixed_in_len  = le32_to_cpu(ntb_parameters.dwNtbInMaxSize);
 }
 
 /*
@@ -502,8 +532,13 @@ static void ncm_do_notify(struct f_ncm *ncm)
 
 		/* SPEED_CHANGE data is up/down speeds in bits/sec */
 		data = req->buf + sizeof *event;
+#if 0
 		data[0] = cpu_to_le32(ncm_bitrate(cdev->gadget));
 		data[1] = data[0];
+#else
+		data[0] = cpu_to_le32(NCM_DOWN_LINK_BITRATE);
+		data[1] = cpu_to_le32(NCM_UP_LINK_BITRATE);
+#endif
 
 		DBG(cdev, "notify speed %d\n", ncm_bitrate(cdev->gadget));
 		ncm->notify_state = NCM_NOTIFY_CONNECT;
@@ -903,7 +938,7 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 	ncb_len += opts->ndp_size;
 	ncb_len += 2 * 2 * opts->dgram_item_len; /* Datagram entry */
 	ncb_len += 2 * 2 * opts->dgram_item_len; /* Zero datagram entry */
-	pad = ALIGN(ncb_len, div) + rem - ncb_len;
+	pad = ALIGN(ncb_len + 14, div) + rem - ncb_len - 14;
 	ncb_len += pad;
 
 	if (ncb_len + skb->len + crc_len > max_size) {
@@ -911,9 +946,14 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 		return NULL;
 	}
 
+#if 1
+    skb2 = skb_realloc_headroom(skb, ncb_len);
+#else
+
 	skb2 = skb_copy_expand(skb, ncb_len,
 			       max_size - skb->len - ncb_len - crc_len,
 			       GFP_ATOMIC);
+#endif
 	dev_kfree_skb_any(skb);
 	if (!skb2)
 		return NULL;
@@ -961,9 +1001,12 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 	put_ncm(&tmp, opts->dgram_item_len, skb->len - ncb_len);
 	/* (d)wDatagramIndex[1] and  (d)wDatagramLength[1] already zeroed */
 
+
+#if 0
 	if (skb->len > MAX_TX_NONFIXED)
 		memset(skb_put(skb, max_size - skb->len),
 		       0, max_size - skb->len);
+#endif
 
 	return skb;
 }
@@ -1318,12 +1361,27 @@ int ncm_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 		ncm_control_intf.iInterface =
 			ncm_string_defs[STRING_CTRL_IDX].id;
 
-		status = ncm_string_defs[NCM_STRING_DATA_IDX].id;
+		/* data interface label */
+		status = usb_string_id(c->cdev);
+		if (status < 0)
+			return status;
+		ncm_string_defs[NCM_STRING_DATA_IDX].id = status;
 		ncm_data_nop_intf.iInterface = status;
 		ncm_data_intf.iInterface = status;
 
-		necm_desc.iMACAddress = ncm_string_defs[STRING_MAC_IDX].id;
-		ncm_iad_desc.iFunction = ncm_string_defs[STRING_IAD_IDX].id;
+		/* MAC address */
+		status = usb_string_id(c->cdev);
+		if (status < 0)
+			return status;
+		ncm_string_defs[STRING_MAC_IDX].id = status;
+		necm_desc.iMACAddress = status;
+
+		/* IAD */
+		status = usb_string_id(c->cdev);
+		if (status < 0)
+			return status;
+		ncm_string_defs[STRING_IAD_IDX].id = status;
+		ncm_iad_desc.iFunction = status;
 	}
 
 	/* allocate and initialize one new instance */

@@ -1,3 +1,5 @@
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2016 KYOCERA Corporation
 #
 # Makefile for the MSM specific device drivers.
 #
@@ -29,3 +31,10 @@ obj-$(CONFIG_MSM_SPSS) += spss.o
 obj-$(CONFIG_MSM_UIM_HSL) += uim_hs_lite.o
 obj-$(CONFIG_QPNP_HAPTIC) += qpnp-haptic.o
 obj-$(CONFIG_SEEMP_CORE) += seemp_core/
+
+obj-y += oem_qpnp_diag.o
+obj-y += kc_pmic_test.o
+
+ifeq ($(KC_DEBUGTOOL_ENABLED_EXPORT), enable)
+CFLAGS_qpnp-vibrator.o += -DKC_BATTERY_LOG_ENABLED
+endif

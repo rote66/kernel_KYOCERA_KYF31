@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* drivers/misc/lowmemorykiller.c
  *
  * The lowmemorykiller driver lets user-space specify a set of memory thresholds
@@ -46,6 +50,10 @@
 #include <linux/cpuset.h>
 #include <linux/show_mem_notifier.h>
 #include <linux/vmpressure.h>
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/almk.h>
@@ -55,6 +63,16 @@
 #else
 #define _ZONE ZONE_NORMAL
 #endif
+
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+static int lowmemkillerlog_print(const char *fmt, ...);
+static int lowmemkillerlog_init(void);
+static int lowmemkillerlog_exit(void);
+#else
+static inline int lowmemkillerlog_print(const char *fmt, ...) { return 0; }
+static inline int lowmemkillerlog_init(void) { return 0; }
+static inline int lowmemkillerlog_exit(void) { return 0; }
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
 
 static uint32_t lowmem_debug_level = 1;
 static short lowmem_adj[6] = {
@@ -520,6 +538,46 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			show_mem_call_notifiers();
 		}
 
+		lowmemkillerlog_print("Killing '%s' (%d), adj %hd,\n" \
+				"   to free %ldkB on behalf of '%s' (%d) because\n" \
+				"   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n" \
+				"   Free memory is %ldkB above reserved.\n" \
+				"   Free CMA is %ldkB\n" \
+				"   Total reserve is %ldkB\n" \
+				"   Total free pages is %ldkB\n" \
+				"   Total file cache is %ldkB\n" \
+				"   Slab Reclaimable is %ldkB\n" \
+				"   Slab UnReclaimable is %ldkB\n" \
+				"   Total Slab is %ldkB\n" \
+				"   GFP mask is 0x%x\n",
+			     selected->comm, selected->pid,
+			     selected_oom_score_adj,
+			     selected_tasksize * (long)(PAGE_SIZE / 1024),
+			     current->comm, current->pid,
+			     other_file * (long)(PAGE_SIZE / 1024),
+			     minfree * (long)(PAGE_SIZE / 1024),
+			     min_score_adj,
+			     other_free * (long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_FREE_CMA_PAGES) *
+				(long)(PAGE_SIZE / 1024),
+			     totalreserve_pages * (long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_FREE_PAGES) *
+				(long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_FILE_PAGES) *
+				(long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_SLAB_RECLAIMABLE) *
+				(long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_SLAB_UNRECLAIMABLE) *
+				(long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_SLAB_RECLAIMABLE) *
+				(long)(PAGE_SIZE / 1024) +
+			     global_page_state(NR_SLAB_UNRECLAIMABLE) *
+				(long)(PAGE_SIZE / 1024),
+			     sc->gfp_mask);
+		show_mem_lmk_mon(SHOW_MEM_FILTER_NODES, (void*)lowmemkillerlog_print);
+		dump_tasks_lmk_mon(NULL, NULL, (void*)lowmemkillerlog_print);
+		lowmemkillerlog_print("%c", 0x08);
+
 		lowmem_deathpending_timeout = jiffies + HZ;
 		send_sig(SIGKILL, selected, 0);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
@@ -540,6 +598,157 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	return rem;
 }
 
+#ifdef CONFIG_LOWMEMKILLER_MONITOR
+#define LOWMEMKILLERLOG_VPRINTF_SIZE    (PAGE_SIZE)
+
+#ifndef CONFIG_LOWMEMKILLER_LOG_SIZE
+#define CONFIG_LOWMEMKILLER_LOG_SIZE    (64 * 1024)
+#endif /* CONFIG_LOWMEMKILLER_LOG_SIZE */
+
+static struct kset *lowmemkillerlog_kset = NULL;
+static char   lowmemkillerlog_vprint[LOWMEMKILLERLOG_VPRINTF_SIZE];
+static char   lowmemkillerlog_buffer[CONFIG_LOWMEMKILLER_LOG_SIZE];
+static size_t lowmemkillerlog_woff = 0;
+static size_t lowmemkillerlog_roff = 0;
+static DECLARE_COMPLETION(lowmemkillerlog_wait);
+
+static void lowmemkillerlog_write(const char* buf, size_t size)
+{
+	const char* data_buf = buf;
+	size_t data_size = size;
+	size_t write_size = 0;
+	bool log_empty = (lowmemkillerlog_woff == lowmemkillerlog_roff);
+
+	while (0 < data_size) {
+		write_size = data_size;
+		if (write_size > CONFIG_LOWMEMKILLER_LOG_SIZE - lowmemkillerlog_woff)
+			write_size = CONFIG_LOWMEMKILLER_LOG_SIZE - lowmemkillerlog_woff;
+		pr_debug("%s: memcpy : roff=%zu, woff=%zu: size=%zu\n", __func__, lowmemkillerlog_roff, lowmemkillerlog_woff, write_size);
+		memcpy(&lowmemkillerlog_buffer[lowmemkillerlog_woff], data_buf, write_size);
+		data_buf += write_size;
+		data_size -= write_size;
+		if ((lowmemkillerlog_roff > lowmemkillerlog_woff) &&
+			(lowmemkillerlog_roff <= lowmemkillerlog_woff + write_size)) {
+			lowmemkillerlog_roff = lowmemkillerlog_woff + write_size + 1;
+			if (CONFIG_LOWMEMKILLER_LOG_SIZE <= lowmemkillerlog_roff) {
+				lowmemkillerlog_roff -= CONFIG_LOWMEMKILLER_LOG_SIZE;
+			}
+		}
+		lowmemkillerlog_woff += write_size;
+		if (CONFIG_LOWMEMKILLER_LOG_SIZE <= lowmemkillerlog_woff) {
+			lowmemkillerlog_woff = 0;
+			if (lowmemkillerlog_roff == 0){
+				lowmemkillerlog_roff = 1;
+			}
+		}
+	}
+
+	if (log_empty) {
+		pr_debug("%s: complete\n", __func__);
+		complete(&lowmemkillerlog_wait);
+	}
+}
+
+static size_t lowmemkillerlog_read(char* buf, size_t size)
+{
+	char* data_buf = buf;
+	size_t data_size = size;
+	size_t read_size = 0;
+	size_t ret_size = 0;
+
+	while ((0 < data_size) && (lowmemkillerlog_woff != lowmemkillerlog_roff)) {
+		read_size = data_size;
+		if (read_size > CONFIG_LOWMEMKILLER_LOG_SIZE - lowmemkillerlog_roff)
+			read_size = CONFIG_LOWMEMKILLER_LOG_SIZE - lowmemkillerlog_roff;
+		if ((lowmemkillerlog_woff > lowmemkillerlog_roff) &&
+			(lowmemkillerlog_woff < lowmemkillerlog_roff + read_size))
+			read_size = lowmemkillerlog_woff - lowmemkillerlog_roff;
+		pr_debug("%s: memcpy : roff=%zu, woff=%zu: size=%zu\n", __func__, lowmemkillerlog_roff, lowmemkillerlog_woff, read_size);
+		memcpy(data_buf, &lowmemkillerlog_buffer[lowmemkillerlog_roff], read_size);
+		data_buf += read_size;
+		data_size -= read_size;
+		ret_size += read_size;
+		lowmemkillerlog_roff += read_size;
+		if (CONFIG_LOWMEMKILLER_LOG_SIZE <= lowmemkillerlog_roff) {
+			lowmemkillerlog_roff -= CONFIG_LOWMEMKILLER_LOG_SIZE;
+		}
+	}
+	return ret_size;
+}
+
+static int lowmemkillerlog_print(const char *fmt, ...)
+{
+	va_list args;
+	int len;
+
+	va_start(args, fmt);
+	len = vscnprintf(&lowmemkillerlog_vprint[0], sizeof(lowmemkillerlog_vprint), fmt, args);
+	va_end(args);
+
+	lowmemkillerlog_write(&lowmemkillerlog_vprint[0], len);
+	return len;
+}
+
+static ssize_t show_lowmemkillerlog(struct file *filep, struct kobject *kobj, struct bin_attribute *attr,
+			char *buf, loff_t off, size_t count)
+{
+	int ret = 0;
+	pr_debug("%s: roff=%zu, woff=%zu\n", __func__, lowmemkillerlog_roff, lowmemkillerlog_woff);
+
+	if (mutex_lock_interruptible(&scan_mutex) < 0)
+		return -EINTR;
+
+	while(lowmemkillerlog_roff == lowmemkillerlog_woff) {
+		pr_debug("%s: wait\n", __func__);
+		mutex_unlock(&scan_mutex);
+		if (wait_for_completion_interruptible(&lowmemkillerlog_wait))
+			return -EINTR;
+		if (mutex_lock_interruptible(&scan_mutex) < 0)
+			return -EINTR;
+	}
+
+	ret = lowmemkillerlog_read(buf, count);
+	mutex_unlock(&scan_mutex);
+
+	pr_debug("%s: read len[%d]\n", __func__, ret);
+
+	return ret;
+}
+
+static struct bin_attribute lowmemkillerlog_attr = {
+	.attr = {
+		.name = "msg",
+		.mode = S_IRUSR,
+	},
+	.size = 0,
+	.read = show_lowmemkillerlog,
+};
+
+static int lowmemkillerlog_init(void)
+{
+	int ret = 0;
+
+	lowmemkillerlog_kset = kset_create_and_add("lmk_monitor", NULL, kernel_kobj);
+	if (!lowmemkillerlog_kset)
+		return -ENOMEM;
+
+	ret = sysfs_create_bin_file(&lowmemkillerlog_kset->kobj, &lowmemkillerlog_attr);
+	if (ret) {
+		kset_unregister(lowmemkillerlog_kset);
+		lowmemkillerlog_kset = NULL;
+		return ret;
+	}
+	return 0;
+}
+static int lowmemkillerlog_exit(void)
+{
+	if (lowmemkillerlog_kset) {
+		kset_unregister(lowmemkillerlog_kset);
+	}
+	return 0;
+}
+#endif /* CONFIG_LOWMEMKILLER_MONITOR */
+
 static struct shrinker lowmem_shrinker = {
 	.shrink = lowmem_shrink,
 	.seeks = DEFAULT_SEEKS * 16
@@ -547,6 +756,7 @@ static struct shrinker lowmem_shrinker = {
 
 static int __init lowmem_init(void)
 {
+	lowmemkillerlog_init();
 	register_shrinker(&lowmem_shrinker);
 	vmpressure_notifier_register(&lmk_vmpr_nb);
 	return 0;
@@ -555,6 +765,7 @@ static int __init lowmem_init(void)
 static void __exit lowmem_exit(void)
 {
 	unregister_shrinker(&lowmem_shrinker);
+	lowmemkillerlog_exit();
 }
 
 #ifdef CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES

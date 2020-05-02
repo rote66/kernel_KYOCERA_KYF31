@@ -1,4 +1,9 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
+/*
  *  linux/arch/arm/common/gic.c
  *
  *  Copyright (C) 2002 ARM Limited, All Rights Reserved.
@@ -50,6 +55,13 @@
 #include <asm/smp_plat.h>
 
 #include "irqchip.h"
+
+#ifdef KC_BATTERY_LOG_ENABLED
+#include <linux/clog.h>
+#define KCBLOG(tag, ...)  CLOG(tag, ##__VA_ARGS__)
+#else
+#define KCBLOG(tag, ...) do{} while(0)
+#endif
 
 union gic_base {
 	void __iomem *common_base;
@@ -301,6 +313,7 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 
 		pr_warning("%s: %d triggered %s\n", __func__,
 					i + gic->irq_offset, name);
+		KCBLOG("resume_irq","%d",i + gic->irq_offset);
 	}
 }
 

@@ -1,3 +1,7 @@
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2015 KYOCERA Corporation
+#
+
 obj-$(CONFIG_IRQCHIP)			+= irqchip.o
 
 obj-$(CONFIG_ARCH_BCM2835)		+= irq-bcm2835.o
@@ -18,3 +22,7 @@ obj-$(CONFIG_VERSATILE_FPGA_IRQ)	+= irq-versatile-fpga.o
 obj-$(CONFIG_ARCH_VT8500)		+= irq-vt8500.o
 obj-$(CONFIG_MSM_IRQ)			+= irq-msm.o
 obj-$(CONFIG_MSM_SHOW_RESUME_IRQ)       += msm_show_resume_irq.o
+
+ifeq ($(KC_DEBUGTOOL_ENABLED_EXPORT), enable)
+CFLAGS_irq-gic.o += -DKC_BATTERY_LOG_ENABLED
+endif

@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/err.h>
@@ -593,6 +597,7 @@ static struct clk_freq_tbl ftbl_gcc_blsp1_qup1_6_spi_apps_clk[] = {
 	F( 960000,	xo,	10,	1,	2),
 	F( 4800000,	xo,	4,	0,	0),
 	F( 9600000,	xo,	2,	0,	0),
+	F( 12500000, gpll0, 16, 1, 4), 
 	F( 16000000,	gpll0,	10,	1,	5),
 	F( 19200000,	xo,	1,	0,	0),
 	F( 25000000,	gpll0,	16,	1,	2),
@@ -1159,10 +1164,22 @@ static struct rcg_clk sdcc1_apps_clk_src = {
 	},
 };
 
+static struct clk_freq_tbl ftbl_gcc_sdcc2_2_apps_clk[] = {
+	F( 144000,	xo,	16,	3,	25),
+	F( 384000,	xo,	5,	1,	10),
+	F( 20000000,	gpll0,	10,	1,	4),
+	F( 24000000,	gpll0,	1,	1,	34),
+	F( 48000000,	gpll0,	1,	2,	34),
+	F( 100000000,	gpll0,	8,	0,	0),
+	F( 177770000,	gpll0,	4.5,	0,	0),
+	F( 200000000,	gpll0,	4,	0,	0),
+	F_END
+};
+
 static struct rcg_clk sdcc2_apps_clk_src = {
 	.cmd_rcgr_reg =  SDCC2_APPS_CMD_RCGR,
 	.set_rate = set_rate_mnd,
-	.freq_tbl = ftbl_gcc_sdcc1_2_apps_clk,
+	.freq_tbl = ftbl_gcc_sdcc2_2_apps_clk,
 	.current_freq = &rcg_dummy_freq,
 	.base = &virt_bases[GCC_BASE],
 	.c = {

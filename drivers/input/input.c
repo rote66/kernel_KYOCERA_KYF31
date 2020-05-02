@@ -9,6 +9,14 @@
  * under the terms of the GNU General Public License version 2 as published by
  * the Free Software Foundation.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #define pr_fmt(fmt) KBUILD_BASENAME ": " fmt
 
@@ -36,6 +44,107 @@ MODULE_LICENSE("GPL");
 #define INPUT_MAX_CHAR_DEVICES		1024
 #define INPUT_FIRST_DYNAMIC_DEV		256
 static DEFINE_IDA(input_ida);
+#define DEBUG_LOGCAPTURE
+#ifdef DEBUG_LOGCAPTURE
+
+#define DUMPLOG_TIMER 30
+#define LOG_KEY_NONE  0x0
+#define LOG_KEY_2 0x02
+#define LOG_KEY_1 0x01
+#define LOG_KEY_ON    (LOG_KEY_1 | LOG_KEY_2)
+#if 0
+#define INPUT_LOG_PRINT(fmt, ...) printk(KERN_DEBUG fmt, ##__VA_ARGS__)
+#else
+#define INPUT_LOG_PRINT(fmt, ...)
+#endif
+
+static struct hrtimer logcapture_timer;
+
+static void check_logcapture(struct input_dev* dev,
+                               unsigned int code, int value)
+{
+       static int logcapture_status = LOG_KEY_NONE;
+
+       if (value == 0) {
+               if (code == KEY_SHARP) {
+                       INPUT_LOG_PRINT("logcapture status=0x%x dev=%x \n",
+                                       logcapture_status,(unsigned int)dev);
+                       logcapture_status &= ~LOG_KEY_2;
+                       INPUT_LOG_PRINT("logcapture timer cancel\n");
+                       hrtimer_cancel(&logcapture_timer);
+                       INPUT_LOG_PRINT("logcapture after status=0x%x\n",
+                                       logcapture_status);
+               }else if (code == KEY_KPASTERISK) {
+                       INPUT_LOG_PRINT("logcapture status=0x%x dev=%x \n",
+                                       logcapture_status,(unsigned int)dev);
+                       logcapture_status &= ~LOG_KEY_1;
+                       INPUT_LOG_PRINT("logcapture timer cancel\n");
+                       hrtimer_cancel(&logcapture_timer);
+                       INPUT_LOG_PRINT("logcapture after status=0x%x\n",
+                                       logcapture_status);
+               }
+       } else {
+               if (code == KEY_SHARP) {
+                       INPUT_LOG_PRINT("logcapture status=0x%x dev=%x \n",
+                                       logcapture_status,(unsigned int)dev);
+                       logcapture_status |= LOG_KEY_2;
+                       if (logcapture_status == LOG_KEY_ON) {
+                               INPUT_LOG_PRINT("logcapture timer start\n");
+                               hrtimer_start(&logcapture_timer,
+                                               ktime_set(DUMPLOG_TIMER,0),
+                                               HRTIMER_MODE_REL);
+                       }
+                       INPUT_LOG_PRINT("logcapture after status=0x%x\n",
+                                       logcapture_status);
+               } else if (code == KEY_KPASTERISK) {
+                       INPUT_LOG_PRINT("logcapture status=0x%x dev=%x \n",
+                                       logcapture_status,(unsigned int)dev);
+                       logcapture_status |= LOG_KEY_1;
+                       if (logcapture_status == LOG_KEY_ON) {
+                               INPUT_LOG_PRINT("logcapture timer start\n");
+                               hrtimer_start(&(logcapture_timer),
+                                               ktime_set(DUMPLOG_TIMER,0),
+                                               HRTIMER_MODE_REL);
+                       }
+                       INPUT_LOG_PRINT("logcapture after status=0x%x\n",
+                                               logcapture_status);
+               }
+       }
+}
+
+static int execute_logcapture(void)
+{
+       static char *envp[] = {
+               "HOME=/",
+               "TERM=linux",
+               "PATH=/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin",
+               NULL
+       };
+       static char *argv[] = {
+               "/system/vendor/bin/logcapture",
+               "--start",
+               NULL
+       };
+       int ret;
+
+       ret = call_usermodehelper(argv[0], argv, envp, UMH_NO_WAIT);
+       INPUT_LOG_PRINT("++ %s: after input call_usermodehelper() (ret=%d).\n",
+                                       __func__, ret);
+       if (ret < 0) {
+               return ret;
+       }
+       return 0;
+}
+
+static enum hrtimer_restart logcapture_timer_func(struct hrtimer *timer)
+{
+       INPUT_LOG_PRINT("logcapture_timer_func start\n");
+       execute_logcapture();
+       return HRTIMER_NORESTART;
+}
+#endif /* DEBUG_LOGCAPTURE */
+
+#define INPUT_DEVICES	256
 
 static LIST_HEAD(input_dev_list);
 static LIST_HEAD(input_handler_list);
@@ -294,6 +403,9 @@ static int input_get_disposition(struct input_dev *dev,
 				__change_bit(code, dev->key);
 				disposition = INPUT_PASS_TO_HANDLERS;
 			}
+#ifdef DEBUG_LOGCAPTURE
+			check_logcapture(dev,code,value);
+#endif
 		}
 		break;
 
@@ -2385,6 +2497,11 @@ static int __init input_init(void)
 		goto fail2;
 	}
 
+#ifdef DEBUG_LOGCAPTURE
+       hrtimer_init(&(logcapture_timer), CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+       logcapture_timer.function = logcapture_timer_func;
+#endif
+
 	return 0;
 
  fail2:	input_proc_exit();
@@ -2394,6 +2511,9 @@ static int __init input_init(void)
 
 static void __exit input_exit(void)
 {
+#ifdef DEBUG_LOGCAPTURE
+       hrtimer_cancel(&(logcapture_timer));
+#endif
 	input_proc_exit();
 	unregister_chrdev_region(MKDEV(INPUT_MAJOR, 0),
 				 INPUT_MAX_CHAR_DEVICES);

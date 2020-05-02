@@ -9,6 +9,14 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2011 KYOCERA Corporation
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
 
 #include <linux/slab.h>
 #include <linux/init.h>
@@ -142,9 +150,8 @@ module_param(poolsize_qsc_usb, uint, 0);
 
 /* This is the max number of user-space clients supported at initialization*/
 static unsigned int max_clients = 15;
-static unsigned int threshold_client_limit = 30;
+static unsigned int threshold_client_limit = 50;
 module_param(max_clients, uint, 0);
-
 /* This is the maximum number of pkt registrations supported at initialization*/
 int diag_max_reg = 600;
 int diag_threshold_reg = 750;

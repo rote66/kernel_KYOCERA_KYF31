@@ -1,3 +1,5 @@
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2015 KYOCERA Corporation
 #
 # Makefile for the kernel character device drivers.
 #
@@ -68,3 +70,6 @@ obj-$(CONFIG_MSM_ADSPRPC)       += adsprpc_compat.o
 endif
 obj-$(CONFIG_MSM_RDBG)       += rdbg.o
 obj-$(CONFIG_MSM_SMD_PKT)       += msm_smd_pkt.o
+obj-$(CONFIG_CDEV_DNAND)	+= dnand/
+obj-y	+= key_dm_driver.o
+

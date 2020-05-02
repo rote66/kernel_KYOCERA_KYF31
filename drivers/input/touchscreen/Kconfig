@@ -1,4 +1,7 @@
 #
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2016 KYOCERA Corporation
+#
 # Touchscreen driver configuration
 #
 menuconfig INPUT_TOUCHSCREEN
@@ -1018,6 +1021,19 @@ config TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called synaptics_dsx_fw_update.
+
+config TOUCHSCREEN_PCT13XX
+	tristate "Pixart I2C touchscreen"
+	default y
+	help
+	  Say Y here if you have a Pixart I2C touchscreen
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called pct13xx_ts.
+
 
 config SECURE_TOUCH
 	bool "Secure Touch"

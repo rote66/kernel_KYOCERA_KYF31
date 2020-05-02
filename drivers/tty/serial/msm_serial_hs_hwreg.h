@@ -17,6 +17,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, you can find it at http://www.fsf.org
  */
+ /*
+ *This software is contributed or developed by KYOCERA Corporation.
+ *(C) 2012 KYOCERA Corporation
+ *(C) 2013 KYOCERA Corporation
+ *(C) 2014 KYOCERA Corporation
+ *(C) 2015 KYOCERA Corporation
+ */
 
 #ifndef MSM_SERIAL_HS_HWREG_H
 #define MSM_SERIAL_HS_HWREG_H
@@ -57,6 +64,7 @@ enum msm_hsl_regs {
 	UARTDM_BCR,
 	UARTDM_TXFS,
 	UARTDM_RXFS,
+	UARTDM_IRDA,
 	UARTDM_LAST,
 };
 

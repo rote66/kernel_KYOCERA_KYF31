@@ -10,6 +10,8 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C)2015 KYOCERA Corporation
  */
 /*
  * SOC Info Routines
@@ -117,7 +119,8 @@ const char *hw_platform_subtype[] = {
 	[PLATFORM_SUBTYPE_UNKNOWN] = "Unknown",
 	[PLATFORM_SUBTYPE_CHARM] = "charm",
 	[PLATFORM_SUBTYPE_STRANGE] = "strange",
-	[PLATFORM_SUBTYPE_STRANGE_2A] = "strange_2a,"
+	[PLATFORM_SUBTYPE_STRANGE_2A] = "strange_2a,",
+	[PLATFORM_SUBTYPE_INVALID] = "INVALID",
 };
 
 /* Used to parse shared memory.  Must match the modem. */

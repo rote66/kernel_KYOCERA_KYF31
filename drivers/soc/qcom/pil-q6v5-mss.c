@@ -10,6 +10,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -27,6 +32,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/of_gpio.h>
 #include <linux/clk/msm-clk.h>
+#include <linux/kcjlog.h>
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/ramdump.h>
 #include <soc/qcom/smem.h>
@@ -82,6 +88,8 @@ static irqreturn_t modem_err_fatal_intr_handler(int irq, void *dev_id)
 		return IRQ_HANDLED;
 
 	pr_err("Fatal error on the modem.\n");
+	set_smem_kcjlog(SYSTEM_MODEM, KIND_FATAL);
+	set_smem_crash_info_data_add_line(__LINE__, __func__);
 	subsys_set_crash_status(drv->subsys, true);
 	restart_modem(drv);
 	return IRQ_HANDLED;
@@ -188,6 +196,8 @@ static irqreturn_t modem_wdog_bite_intr_handler(int irq, void *dev_id)
 		return IRQ_HANDLED;
 
 	pr_err("Watchdog bite received from modem software!\n");
+	set_smem_kcjlog(SYSTEM_MODEM, KIND_WDOG_HW);
+	set_smem_crash_info_data_add_line(__LINE__, __func__);
 	if (drv->subsys_desc.system_debug &&
 			!gpio_get_value(drv->subsys_desc.err_fatal_gpio))
 		panic("%s: System ramdump requested. Triggering device restart!\n",

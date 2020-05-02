@@ -11,6 +11,10 @@
  *  published by the Free Software Foundation.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/types.h>
 #include <linux/delay.h>
@@ -28,6 +32,18 @@
 #include <linux/of_gpio.h>
 #include <linux/of_platform.h>
 
+#include <linux/key_dm_driver.h>
+
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+#include <linux/wakelock.h>
+#include <linux/gpio_keys.h>
+
+#define IRQS_PENDING 0x00000200
+#define istate core_internal_state__do_not_mess_with_it
+struct wake_lock matrix_keypad_wake_lock;
+struct wake_lock matrix_keypad_scan_wake_lock;
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
+
 struct matrix_keypad {
 	const struct matrix_keypad_platform_data *pdata;
 	struct input_dev *input_dev;
@@ -41,7 +57,86 @@ struct matrix_keypad {
 	bool scan_pending;
 	bool stopped;
 	bool gpio_all_disabled;
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	struct pinctrl *matrix_keypad_pinctrl;
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 };
+
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+#define KEYPAD_GROUP_NUM 4
+
+static int matrix_keypad_key_group[MATRIX_MAX_ROWS][MATRIX_MAX_COLS] =
+{
+	{ 0,0,0,0,0,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 0,0,0,0,0,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 0,0,0,0,0,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,1,2,2,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,2,2,3,3,3,3,3,3,3,3,3,3, },
+	{ 0,0,0,0,0,1,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+	{ 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, },
+ };
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
+
+#ifdef QUALCOMM_ORIGINAL_FEATURE
+#define MATRIX_KEYPAD_ERR_LOG_PRINT(fmt, ...)
+#define MATRIX_KEYPAD_DEBUG_LOG_PRINT(fmt, ...)
+#define MATRIX_KEYPAD_PR_LOG_PRINT(fmt, args...)
+#else
+static bool matrix_keypad_debug;
+module_param(matrix_keypad_debug, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(matrix_keypad_debug, "matrix_keypad debug messages");
+
+#define MATRIX_KEYPAD_ERR_LOG_PRINT(fmt, ...) printk(KERN_ERR "%s: " fmt, __func__, ##__VA_ARGS__)
+#define MATRIX_KEYPAD_DEBUG_LOG_PRINT(fmt, ...) printk(KERN_DEBUG "%s: " fmt, __func__, ##__VA_ARGS__)
+#define MATRIX_KEYPAD_PR_LOG_PRINT(fmt, args...)    do { if (matrix_keypad_debug)	     \
+                                                         printk(KERN_DEBUG "%s: " fmt, __func__, ##args); \
+                                                   } while(0)
+#endif
+
+static bool g_kdm_matrixkey_check = false;
+
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+static int matrix_keypad_pinctrl_configure(struct matrix_keypad *keypad,
+							bool active)
+{
+	struct pinctrl_state *set_state;
+	int retval;
+
+	if (active) {
+		set_state =
+			pinctrl_lookup_state(keypad->matrix_keypad_pinctrl,
+						"matrix_keypad_active");
+		if (IS_ERR(set_state)) {
+			MATRIX_KEYPAD_ERR_LOG_PRINT("cannot get ts pinctrl active state\n");
+			return PTR_ERR(set_state);
+		}
+	} else {
+		set_state =
+			pinctrl_lookup_state(keypad->matrix_keypad_pinctrl,
+						"matrix_keypad_prescan");
+		if (IS_ERR(set_state)) {
+			MATRIX_KEYPAD_ERR_LOG_PRINT("cannot get gpiokey pinctrl prescan state\n");
+
+			printk(KERN_ERR "%s: cannot get gpiokey pinctrl prescan state\n", __func__);
+			return PTR_ERR(set_state);
+		}
+	}
+	retval = pinctrl_select_state(keypad->matrix_keypad_pinctrl, set_state);
+	if (retval) {
+		MATRIX_KEYPAD_ERR_LOG_PRINT("cannot set ts pinctrl state\n");
+		return retval;
+	}
+
+	return 0;
+}
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 
 /*
  * NOTE: normally the GPIO has to be put into HiZ when de-activated to cause
@@ -56,7 +151,14 @@ static void __activate_col(const struct matrix_keypad_platform_data *pdata,
 	if (on) {
 		gpio_direction_output(pdata->col_gpios[col], level_on);
 	} else {
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 		gpio_set_value_cansleep(pdata->col_gpios[col], !level_on);
+#else
+		gpio_direction_input(pdata->col_gpios[col]);
+		gpio_direction_output(pdata->col_gpios[col], !level_on);
+    	if (pdata->col_scan_delay_us)
+    		udelay(pdata->col_scan_delay_us);
+#endif
 		gpio_direction_input(pdata->col_gpios[col]);
 	}
 }
@@ -112,6 +214,30 @@ static void disable_row_irqs(struct matrix_keypad *keypad)
 	}
 }
 
+unsigned char matrixkey_cmd(unsigned char cmd, int *val)
+{
+	uint8_t ret = 1;
+
+	MATRIX_KEYPAD_DEBUG_LOG_PRINT("cmd:%d\n", cmd);
+	switch (cmd) {
+	case KEY_DM_CHECK_COMMAND:
+		MATRIX_KEYPAD_DEBUG_LOG_PRINT("%x %x\n",g_kdm_matrixkey_check, val[0]);
+		if (val[0]) {
+			g_kdm_matrixkey_check = true;
+		} else {
+			g_kdm_matrixkey_check = false;
+		}
+		ret = 0;
+		break;
+
+	default:
+		MATRIX_KEYPAD_ERR_LOG_PRINT("%d\n", cmd);
+		break;
+	}
+	return ret;
+}
+EXPORT_SYMBOL(matrixkey_cmd);
+
 /*
  * This gets the keys from keyboard and reports it to input subsystem
  */
@@ -124,6 +250,33 @@ static void matrix_keypad_scan(struct work_struct *work)
 	const struct matrix_keypad_platform_data *pdata = keypad->pdata;
 	uint32_t new_state[MATRIX_MAX_COLS];
 	int row, col, code;
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	int count = 0;
+    struct irq_desc *desc;
+    int gcnt[KEYPAD_GROUP_NUM], i;
+    bool folder_state;
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
+
+    MATRIX_KEYPAD_PR_LOG_PRINT("start \n");
+
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+    if(!keypad->scan_pending){
+         keypad->scan_pending = true;
+    }
+
+    folder_state = gpio_keys_is_stateon(SW_LID);
+
+    if(!folder_state){
+    if(keypad->matrix_keypad_pinctrl){
+        matrix_keypad_pinctrl_configure(keypad, false);
+    }
+    else{
+        MATRIX_KEYPAD_ERR_LOG_PRINT("matrix_keypad_pinctrl 1st err %p\n", keypad->matrix_keypad_pinctrl);
+    }
+
+    for(i=0;i<KEYPAD_GROUP_NUM;i++)
+        gcnt[i]=0;
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 
 	/* de-activate all columns for scanning */
 	activate_all_cols(pdata, false);
@@ -136,11 +289,61 @@ static void matrix_keypad_scan(struct work_struct *work)
 		activate_col(pdata, col, true);
 
 		for (row = 0; row < pdata->num_row_gpios; row++)
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 			new_state[col] |=
 				row_asserted(pdata, row) ? (1 << row) : 0;
+#else
+			if( row_asserted(pdata, row) ){
+				count++;
+				gcnt[matrix_keypad_key_group[row][col]]++;
+				new_state[col] |= (1 << row);
+			}
+#endif
 
 		activate_col(pdata, col, false);
 	}
+
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	if( (count != 0) && !(keypad->stopped) && !gpio_keys_is_stateon(SW_LID))
+		wake_lock(&matrix_keypad_scan_wake_lock);
+
+	for (col = 0; col < pdata->num_col_gpios; col++) {
+		for (row = 0; row < pdata->num_row_gpios; row++) {
+			switch (matrix_keypad_key_group[row][col]) {
+				case 0:
+					if(gcnt[0] > 2) {
+						if( keypad->last_key_state[col] & (1 << row) )
+							new_state[col] |= (1 << row);
+						else
+							new_state[col] &= ~(1 << row);
+
+						continue;
+					}
+					break;
+
+				case 1:
+					break;
+
+				case 2:
+					if(gcnt[2] > 2) {
+						if( keypad->last_key_state[col] & (1 << row) )
+							new_state[col] |= (1 << row);
+						else
+							new_state[col] &= ~(1 << row);
+
+						continue;
+					}
+					break;
+
+				case 3:
+					break;
+
+				default:
+					break;
+			}
+		}
+	}
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 
 	for (col = 0; col < pdata->num_col_gpios; col++) {
 		uint32_t bits_changed;
@@ -154,21 +357,67 @@ static void matrix_keypad_scan(struct work_struct *work)
 				continue;
 
 			code = MATRIX_SCAN_CODE(row, col, keypad->row_shift);
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 			input_event(input_dev, EV_MSC, MSC_SCAN, code);
+#endif /* QUALCOMM_ORIGINAL_FEATURE */
+			if (g_kdm_matrixkey_check) {
+				if((new_state[col] & (1 << row))){
+					key_set_code(keycodes[code]);
+				}
+			} else {
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+            wake_lock_timeout(&matrix_keypad_wake_lock,HZ);
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 			input_report_key(input_dev,
 					 keycodes[code],
 					 new_state[col] & (1 << row));
+            MATRIX_KEYPAD_DEBUG_LOG_PRINT("input_report_key code %d %d  \n", keycodes[code], new_state[col] & (1 << row));
+            }
 		}
 	}
+	if (!g_kdm_matrixkey_check) {
 	input_sync(input_dev);
+	}
 
 	memcpy(keypad->last_key_state, new_state, sizeof(new_state));
 
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 	activate_all_cols(pdata, true);
-
+#else
+    if(keypad->matrix_keypad_pinctrl){
+        matrix_keypad_pinctrl_configure(keypad, true);
+    }
+    else{
+        MATRIX_KEYPAD_ERR_LOG_PRINT("matrix_keypad_pinctrl 2st err %p\n", keypad->matrix_keypad_pinctrl);
+    }
+#endif
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	for (row = 0; row < pdata->num_row_gpios; row++) {
+		for (col = 0; col < pdata->num_col_gpios; col++) {
+			if ((keypad->last_key_state[col] & (1 << row))){
+        		desc = irq_to_desc(gpio_to_irq(pdata->row_gpios[row]));
+                desc->istate &= ~IRQS_PENDING;
+                break;
+            }
+		}
+	}
+	}
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 	mutex_lock(&keypad->lock);
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	if(count==0 || keypad->stopped || gpio_keys_is_stateon(SW_LID)){
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 	keypad->scan_pending = false;
 	enable_row_irqs(keypad);
+	wake_unlock(&matrix_keypad_scan_wake_lock);
+    MATRIX_KEYPAD_PR_LOG_PRINT("end cnt = %d stop = %d fd = %d \n", count, keypad->stopped, gpio_keys_is_stateon(SW_LID));
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	}else {
+		schedule_delayed_work(&keypad->work,
+			msecs_to_jiffies(keypad->pdata->debounce_ms));
+        MATRIX_KEYPAD_PR_LOG_PRINT("polling  cnt = %d stop = %d fd = %d \n", count, keypad->stopped, gpio_keys_is_stateon(SW_LID));
+	}
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 	mutex_unlock(&keypad->lock);
 }
 
@@ -176,6 +425,7 @@ static irqreturn_t matrix_keypad_interrupt(int irq, void *id)
 {
 	struct matrix_keypad *keypad = id;
 
+    MATRIX_KEYPAD_PR_LOG_PRINT(" %d\n", irq);
 	mutex_lock(&keypad->lock);
 
 	/*
@@ -183,8 +433,15 @@ static irqreturn_t matrix_keypad_interrupt(int irq, void *id)
 	 * scan already. In that case we should not try to
 	 * disable IRQs again.
 	 */
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 	if (unlikely(keypad->scan_pending || keypad->stopped))
 		goto out;
+#else
+	if (unlikely(keypad->scan_pending || keypad->stopped)){
+        MATRIX_KEYPAD_PR_LOG_PRINT(" %d pending \n", irq);
+		goto out;
+    }
+#endif
 
 	disable_row_irqs(keypad);
 	keypad->scan_pending = true;
@@ -218,7 +475,12 @@ static void matrix_keypad_stop(struct input_dev *dev)
 
 	keypad->stopped = true;
 	mb();
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 	flush_work(&keypad->work.work);
+#else
+	flush_delayed_work(&keypad->work);
+	msleep(2 * keypad->pdata->debounce_ms);
+#endif
 	/*
 	 * matrix_keypad_scan() will leave IRQs enabled;
 	 * we should disable them now.
@@ -274,11 +536,29 @@ static int matrix_keypad_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct matrix_keypad *keypad = platform_get_drvdata(pdev);
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	int folder_status;
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
+
+
+    MATRIX_KEYPAD_PR_LOG_PRINT("\n");
 
 	matrix_keypad_stop(keypad->input_dev);
 
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 	if (device_may_wakeup(&pdev->dev))
 		matrix_keypad_enable_wakeup(keypad);
+#else
+	folder_status = gpio_keys_is_stateon(SW_LID);
+    if (device_may_wakeup(&pdev->dev) && !folder_status){
+		MATRIX_KEYPAD_DEBUG_LOG_PRINT("enable_wakeup %d\n", folder_status);
+
+		matrix_keypad_enable_wakeup(keypad);
+    }
+    else{
+		MATRIX_KEYPAD_DEBUG_LOG_PRINT(" Not enable_wakeup %d\n", folder_status);
+    }
+#endif
 
 	return 0;
 }
@@ -287,6 +567,8 @@ static int matrix_keypad_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct matrix_keypad *keypad = platform_get_drvdata(pdev);
+
+    MATRIX_KEYPAD_PR_LOG_PRINT("\n");
 
 	if (device_may_wakeup(&pdev->dev))
 		matrix_keypad_disable_wakeup(keypad);
@@ -474,6 +756,13 @@ static int matrix_keypad_probe(struct platform_device *pdev)
 	struct input_dev *input_dev;
 	int err;
 
+    MATRIX_KEYPAD_PR_LOG_PRINT("start\n");
+
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+    wake_lock_init(&matrix_keypad_wake_lock,WAKE_LOCK_SUSPEND,"matrix_keypad_wake_lock");
+    wake_lock_init(&matrix_keypad_scan_wake_lock,WAKE_LOCK_SUSPEND,"matrix_keypad_scan_wake_lock");
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
+
 	pdata = dev_get_platdata(&pdev->dev);
 	if (!pdata) {
 		pdata = matrix_keypad_parse_dt(&pdev->dev);
@@ -493,6 +782,27 @@ static int matrix_keypad_probe(struct platform_device *pdev)
 		goto err_free_mem;
 	}
 
+
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	/* Get pinctrl if target uses pinctrl */
+	keypad->matrix_keypad_pinctrl = devm_pinctrl_get(&pdev->dev);
+	if (IS_ERR(keypad->matrix_keypad_pinctrl)) {
+		if (PTR_ERR(keypad->matrix_keypad_pinctrl) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+
+		MATRIX_KEYPAD_ERR_LOG_PRINT("Target does not use pinctrl\n");
+		keypad->matrix_keypad_pinctrl = NULL;
+	}
+
+	if (keypad->matrix_keypad_pinctrl) {
+		err = matrix_keypad_pinctrl_configure(keypad, true);
+		if (err) {
+			MATRIX_KEYPAD_ERR_LOG_PRINT("cannot set ts pinctrl active state\n");
+			goto err_free_gpio;
+		}
+	}
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
+
 	keypad->input_dev = input_dev;
 	keypad->pdata = pdata;
 	keypad->row_shift = get_count_order(pdata->num_col_gpios);
@@ -500,7 +810,12 @@ static int matrix_keypad_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&keypad->work, matrix_keypad_scan);
 	mutex_init(&keypad->lock);
 
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 	input_dev->name		= pdev->name;
+#else
+	input_dev->name		= "matrix_keypad.67";
+#endif
+
 	input_dev->id.bustype	= BUS_HOST;
 	input_dev->dev.parent	= &pdev->dev;
 	input_dev->open		= matrix_keypad_start;
@@ -515,9 +830,15 @@ static int matrix_keypad_probe(struct platform_device *pdev)
 		goto err_free_mem;
 	}
 
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+	__set_bit(INPUT_PROP_NO_DUMMY_RELEASE, input_dev->propbit);
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
+
 	if (!pdata->no_autorepeat)
 		__set_bit(EV_REP, input_dev->evbit);
+#ifdef QUALCOMM_ORIGINAL_FEATURE
 	input_set_capability(input_dev, EV_MSC, MSC_SCAN);
+#endif /* QUALCOMM_ORIGINAL_FEATURE */
 	input_set_drvdata(input_dev, keypad);
 
 	err = matrix_keypad_init_gpio(pdev, keypad);
@@ -531,6 +852,7 @@ static int matrix_keypad_probe(struct platform_device *pdev)
 	device_init_wakeup(&pdev->dev, pdata->wakeup);
 	platform_set_drvdata(pdev, keypad);
 
+    MATRIX_KEYPAD_PR_LOG_PRINT("end\n");
 	return 0;
 
 err_free_gpio:
@@ -546,6 +868,11 @@ static int matrix_keypad_remove(struct platform_device *pdev)
 	struct matrix_keypad *keypad = platform_get_drvdata(pdev);
 
 	device_init_wakeup(&pdev->dev, 0);
+
+#ifndef QUALCOMM_ORIGINAL_FEATURE
+    wake_lock_destroy(&matrix_keypad_wake_lock);
+    wake_lock_destroy(&matrix_keypad_scan_wake_lock);
+#endif /* Not QUALCOMM_ORIGINAL_FEATURE */
 
 	matrix_keypad_free_gpio(keypad);
 	mutex_destroy(&keypad->lock);

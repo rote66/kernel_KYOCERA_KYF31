@@ -1,3 +1,6 @@
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2015 KYOCERA Corporation
+
 # generic gpio support: platform drivers, dedicated expander chips, etc
 
 ccflags-$(CONFIG_DEBUG_GPIO)	+= -DDEBUG
@@ -89,3 +92,10 @@ obj-$(CONFIG_GPIO_WM8994)	+= gpio-wm8994.o
 obj-$(CONFIG_GPIO_XILINX)	+= gpio-xilinx.o
 obj-$(CONFIG_MSM_SMP2P)		+= gpio-msm-smp2p.o
 obj-$(CONFIG_MSM_SMP2P_TEST)	+= gpio-msm-smp2p-test.o
+
+#Kc Board
+obj-y += kc_board.o
+
+ifeq ($(KC_DEBUGTOOL_ENABLED_EXPORT), enable)
+CFLAGS_gpio-msm-common.o += -DKC_BATTERY_LOG_ENABLED
+endif

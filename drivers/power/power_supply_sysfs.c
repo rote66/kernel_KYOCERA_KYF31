@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+/*
  *  Sysfs interface for the universal power supply monitor class
  *
  *  Copyright © 2007  David Woodhouse <dwmw2@infradead.org>
@@ -46,7 +50,7 @@ static ssize_t power_supply_show_property(struct device *dev,
 	static char *type_text[] = {
 		"Unknown", "Battery", "UPS", "Mains", "USB",
 		"USB_DCP", "USB_CDP", "USB_ACA", "Wireless", "BMS",
-		"USB_Parallel"
+		"USB_Parallel", "hkadc", "OtherCharger"
 	};
 	static char *status_text[] = {
 		"Unknown", "Charging", "Discharging", "Not charging", "Full"
@@ -205,10 +209,21 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(type),
 	POWER_SUPPLY_ATTR(scope),
 	POWER_SUPPLY_ATTR(system_temp_level),
+#ifdef CONFIG_OEM_HKADC_USB_TM
+	POWER_SUPPLY_ATTR(usb_temp_level),
+#endif
 	POWER_SUPPLY_ATTR(resistance),
 	POWER_SUPPLY_ATTR(resistance_capacitive),
 	POWER_SUPPLY_ATTR(resistance_id),
 	POWER_SUPPLY_ATTR(resistance_now),
+	/* OEM added of type `int' */
+	POWER_SUPPLY_ATTR(pa_therm),
+	POWER_SUPPLY_ATTR(substrate_therm),
+	POWER_SUPPLY_ATTR(usb_therm),
+	POWER_SUPPLY_ATTR(camera_therm),
+#ifdef CONFIG_OEM_BMS
+	POWER_SUPPLY_ATTR(bms_batt_status),
+#endif
 	/* Local extensions */
 	POWER_SUPPLY_ATTR(usb_hc),
 	POWER_SUPPLY_ATTR(usb_otg),

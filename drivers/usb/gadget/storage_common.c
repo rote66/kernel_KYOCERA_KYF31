@@ -23,6 +23,12 @@
  * The valid range of num_buffers is: num >= 2 && num <= 4.
  */
 
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
+
 
 #include <linux/usb/storage.h>
 #include <scsi/scsi.h>
@@ -397,6 +403,21 @@ static struct usb_descriptor_header *fsg_ss_function[] = {
 	NULL,
 };
 
+/* Maxpacket and other transfer characteristics vary by speed. */
+static __maybe_unused struct usb_endpoint_descriptor *
+fsg_ep_desc(struct usb_gadget *g, struct usb_endpoint_descriptor *fs,
+		struct usb_endpoint_descriptor *hs,
+		struct usb_endpoint_descriptor *ss)
+{
+	if (gadget_is_superspeed(g) && g->speed == USB_SPEED_SUPER)
+		return ss;
+	else if (gadget_is_dualspeed(g) && g->speed == USB_SPEED_HIGH)
+		return hs;
+	return fs;
+}
+
+
+#if 0
 /* Static strings, in UTF-8 (for simplicity we use only ASCII characters) */
 static struct usb_string		fsg_strings[] = {
 	{FSG_STRING_INTERFACE,		fsg_string_interface},
@@ -407,6 +428,7 @@ static struct usb_gadget_strings	fsg_stringtab = {
 	.language	= 0x0409,		/* en-us */
 	.strings	= fsg_strings,
 };
+#endif
 
 
  /*-------------------------------------------------------------------------*/
@@ -707,6 +729,7 @@ static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
 	int		rc = 0;
 
 
+#if 0
 #if !defined(CONFIG_USB_G_ANDROID)
 	/* disabled in android because we need to allow closing the backing file
 	 * if the media was removed
@@ -715,6 +738,7 @@ static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
 		LDBG(curlun, "eject attempt prevented\n");
 		return -EBUSY;				/* "Door is locked" */
 	}
+#endif
 #endif
 
 	/* Remove a trailing newline */

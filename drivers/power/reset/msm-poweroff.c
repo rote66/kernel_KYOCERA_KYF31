@@ -10,6 +10,11 @@
  * GNU General Public License for more details.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -24,6 +29,7 @@
 #include <linux/delay.h>
 #include <linux/qpnp/power-on.h>
 #include <linux/of_address.h>
+#include <linux/kcjlog.h>
 
 #include <asm/cacheflush.h>
 #include <asm/system_misc.h>
@@ -31,6 +37,10 @@
 #include <soc/qcom/scm.h>
 #include <soc/qcom/restart.h>
 #include <soc/qcom/watchdog.h>
+
+#ifdef CONFIG_EX_RAMDUMP
+#include <mach/msm_iomap.h>
+#endif
 
 #define EMERGENCY_DLOAD_MAGIC1    0x322A4F99
 #define EMERGENCY_DLOAD_MAGIC2    0xC67E4350
@@ -43,6 +53,9 @@
 #define SCM_EDLOAD_MODE			0X01
 #define SCM_DLOAD_CMD			0x10
 
+#ifdef CONFIG_EX_RAMDUMP
+#define DUMP_RESET_FLAG_RAM_BASE  (MSM_UNINIT_RAM_BASE + 0x0036B000)
+#endif
 
 static int restart_mode;
 void *restart_reason;
@@ -51,6 +64,10 @@ static bool scm_deassert_ps_hold_supported;
 /* Download mode master kill-switch */
 static void __iomem *msm_ps_hold;
 static phys_addr_t tcsr_boot_misc_detect;
+
+#ifdef CONFIG_EX_RAMDUMP
+static unsigned int *reset_flag = (unsigned int*)DUMP_RESET_FLAG_RAM_BASE;
+#endif
 
 #ifdef CONFIG_MSM_DLOAD_MODE
 #define EDL_MODE_PROP "qcom,msm-imem-emergency_download_mode"
@@ -63,7 +80,11 @@ static void *emergency_dload_mode_addr;
 static bool scm_dload_supported;
 
 static int dload_set(const char *val, struct kernel_param *kp);
+#ifdef CONFIG_EX_RAMDUMP
+static int download_mode = 0;
+#else
 static int download_mode = 1;
+#endif
 module_param_call(download_mode, dload_set, param_get_int,
 			&download_mode, 0644);
 static int panic_prep_restart(struct notifier_block *this,
@@ -185,8 +206,20 @@ static bool get_dload_mode(void)
 void msm_set_restart_mode(int mode)
 {
 	restart_mode = mode;
+#ifdef CONFIG_EX_RAMDUMP
+#ifdef CONFIG_MSM_DLOAD_MODE
+    if (mode == RESTART_DLOAD) {
+       download_mode = mode;
+    }
+#endif
+#endif
 }
 EXPORT_SYMBOL(msm_set_restart_mode);
+
+extern bool is_vbus_active(void);
+extern bool msm_is_pwroff_mode(void);
+extern void msm_set_pwroff_complete(void);
+extern void diag_end_sequence_output(void);
 
 /*
  * Force the SPMI PMIC arbiter to shutdown so that no more SPMI transactions
@@ -225,6 +258,12 @@ static void msm_restart_prepare(const char *cmd)
 
 	set_dload_mode(download_mode &&
 			(in_panic || restart_mode == RESTART_DLOAD));
+
+#ifdef CONFIG_EX_RAMDUMP
+    if(in_panic == 0) {
+        *reset_flag = 0;
+    }
+#endif
 #endif
 
 	need_warm_reset = (get_dload_mode() ||
@@ -249,6 +288,10 @@ static void msm_restart_prepare(const char *cmd)
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 	}
 
+	if(in_panic == 1) {
+		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+	}
+
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
 			qpnp_pon_set_restart_reason(
@@ -258,6 +301,7 @@ static void msm_restart_prepare(const char *cmd)
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_RECOVERY);
 			__raw_writel(0x77665502, restart_reason);
+			qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 		} else if (!strcmp(cmd, "rtc")) {
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_RTC);
@@ -318,6 +362,20 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 		.arginfo = SCM_ARGS(2),
 	};
 
+	if (cmd != NULL) {
+		if (strcmp(cmd, "kernel_panic") == 0) {
+			set_smem_kcjlog(SYSTEM_KERNEL, KIND_PANIC);
+			set_smem_crash_info_data(" ");
+		} else if (strcmp(cmd, "android_system_crash") == 0) {
+			set_smem_kcjlog(SYSTEM_ANDROID, KIND_SYS_SERVER);
+			set_smem_crash_info_data(" ");
+		} else if (strcmp(cmd, "kdfs_reboot") == 0) {
+			set_smem_kcjlog(SYSTEM_ANDROID, KIND_KDFS_REBOOT);
+			set_smem_crash_info_data(" ");
+		}
+	}
+	set_kcj_crash_info();
+
 	pr_notice("Going down for restart now\n");
 
 	msm_restart_prepare(cmd);
@@ -348,6 +406,29 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 	mdelay(10000);
 }
 
+static void oem_do_msm_poweroff_prepare(void)
+{
+        bool pwroff_mode,vbus_monit;
+        int loop_count = 0;
+        pwroff_mode = msm_is_pwroff_mode();
+        if (pwroff_mode == true ) {
+                msm_set_pwroff_complete();
+                for (;;) {
+                        vbus_monit = is_vbus_active();
+                        if (vbus_monit==false){
+                                break;
+                        }
+                        msleep(100);
+                        pr_debug("Wait VBUS OFF!!!\n");
+                        if((loop_count % 100) == 0) {
+                            pr_debug("Wait VBUS OFF!!! loop_count=%d\n", loop_count);
+                        }
+                        loop_count++;
+                }
+        }
+}
+
+
 static void do_msm_poweroff(void)
 {
 	int ret;
@@ -357,9 +438,13 @@ static void do_msm_poweroff(void)
 		.arginfo = SCM_ARGS(2),
 	};
 
+	clear_kcj_crash_info();
 	pr_notice("Powering off the SoC\n");
 #ifdef CONFIG_MSM_DLOAD_MODE
 	set_dload_mode(0);
+#ifdef CONFIG_EX_RAMDUMP
+    *reset_flag = 0;
+#endif
 #endif
 	qpnp_pon_system_pwr_off(PON_POWER_OFF_SHUTDOWN);
 	/* Needed to bypass debug image on some chips */
@@ -374,6 +459,7 @@ static void do_msm_poweroff(void)
 
 	halt_spmi_pmic_arbiter();
 	deassert_ps_hold();
+	pr_info("checkpoint: lower pshold. shutdown end\n");
 
 	mdelay(10000);
 	pr_err("Powering off has failed\n");
@@ -434,6 +520,7 @@ static int msm_restart_probe(struct platform_device *pdev)
 		tcsr_boot_misc_detect = mem->start;
 
 	pm_power_off = do_msm_poweroff;
+	pm_power_off_prepare = oem_do_msm_poweroff_prepare;
 	arm_pm_restart = do_msm_restart;
 
 	if (scm_is_call_available(SCM_SVC_PWR, SCM_IO_DISABLE_PMIC_ARBITER) > 0)

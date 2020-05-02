@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #ifndef _MSM_H
 #define _MSM_H
@@ -123,4 +127,5 @@ struct vb2_queue *msm_get_stream_vb2q(unsigned int session_id,
 	unsigned int stream_id);
 struct msm_stream *msm_get_stream_from_vb2q(struct vb2_queue *q);
 struct msm_session *msm_session_find(unsigned int session_id);
+void msm_error_notify(unsigned int session_id, unsigned int error_type);
 #endif /*_MSM_H */

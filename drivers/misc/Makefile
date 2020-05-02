@@ -1,4 +1,7 @@
 #
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2016 KYOCERA Corporation
+#
 # Makefile for misc devices that really don't fit anywhere else.
 #
 
@@ -50,6 +53,7 @@ obj-$(CONFIG_PCH_PHUB)		+= pch_phub.o
 obj-y				+= ti-st/
 obj-y				+= lis3lv02d/
 obj-y				+= carma/
+obj-y	+= swic/
 obj-$(CONFIG_USB_SWITCH_FSA9480) += fsa9480.o
 obj-$(CONFIG_ALTERA_STAPL)	+=altera-stapl/
 obj-$(CONFIG_INTEL_MEI)		+= mei/
@@ -66,4 +70,5 @@ obj-$(CONFIG_QFP_FUSE) += qfp_fuse.o
 obj-$(CONFIG_TI_DRV2667) += ti_drv2667.o
 obj-$(CONFIG_QPNP_MISC) += qpnp-misc.o
 obj-$(CONFIG_QCOM_LIQUID_DOCK)	+= qcom_liquid_dock.o
+obj-y				+= dtvtuner/
 obj-y				+= qcom/

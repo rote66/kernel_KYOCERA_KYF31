@@ -1,3 +1,5 @@
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2016 KYOCERA Corporation
 #
 # Input core configuration
 #
@@ -242,6 +244,7 @@ config KEYBOARD_TCA8418
 config KEYBOARD_MATRIX
 	tristate "GPIO driven matrix keypad support"
 	depends on GPIOLIB
+	default y
 	select INPUT_MATRIXKMAP
 	help
 	  Enable support for GPIO driven matrix keypad.

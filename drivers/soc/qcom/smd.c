@@ -14,6 +14,11 @@
  * GNU General Public License for more details.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/platform_device.h>
 #include <linux/module.h>
@@ -38,6 +43,7 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/ipc_logging.h>
+#include <linux/kcjlog.h>
 
 #include <soc/qcom/ramdump.h>
 #include <soc/qcom/smd.h>
@@ -2591,6 +2597,7 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 		if (modm & SMSM_RESET) {
 			pr_err("\nSMSM: Modem SMSM state changed to SMSM_RESET.");
 		} else if (modm & SMSM_INIT) {
+			set_modemlog_info();
 			if (!(apps & SMSM_INIT))
 				apps |= SMSM_INIT;
 			if (modm & SMSM_SMDINIT)

@@ -1,3 +1,7 @@
+#
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2016 KYOCERA Corporation
+#
 
 # LED Core
 obj-$(CONFIG_NEW_LEDS)			+= led-core.o
@@ -58,6 +62,8 @@ obj-$(CONFIG_LEDS_LM355x)		+= leds-lm355x.o
 obj-$(CONFIG_LEDS_BLINKM)		+= leds-blinkm.o
 obj-$(CONFIG_LEDS_MSM_GPIO_FLASH)	+= leds-msm-gpio-flash.o
 obj-$(CONFIG_LEDS_AW2013)		+= leds-aw2013.o
+obj-$(CONFIG_LEDS_LV5216)		+= leds-lv5216kc.o
+obj-$(CONFIG_LEDS_MSM_MDM)		+= leds-msm-mdm.o
 
 # LED SPI Drivers
 obj-$(CONFIG_LEDS_DAC124S085)		+= leds-dac124s085.o

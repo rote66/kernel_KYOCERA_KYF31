@@ -9,6 +9,10 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/err.h>
 #include <linux/sizes.h>
@@ -143,6 +147,8 @@ static int mmc_decode_csd(struct mmc_card *card)
 			csd->erase_size = UNSTUFF_BITS(resp, 39, 7) + 1;
 			csd->erase_size <<= csd->write_blkbits - 9;
 		}
+		csd->perm_write_protect = UNSTUFF_BITS(resp, 13, 1);
+		csd->tmp_write_protect  = UNSTUFF_BITS(resp, 12, 1);
 		break;
 	case 1:
 		/*
@@ -177,6 +183,8 @@ static int mmc_decode_csd(struct mmc_card *card)
 		csd->write_blkbits = 9;
 		csd->write_partial = 0;
 		csd->erase_size = 1;
+		csd->perm_write_protect = UNSTUFF_BITS(resp, 13, 1);
+		csd->tmp_write_protect  = UNSTUFF_BITS(resp, 12, 1);
 		break;
 	default:
 		pr_err("%s: unrecognised CSD structure version %d\n",
@@ -473,12 +481,12 @@ static void sd_update_bus_speed_mode(struct mmc_card *card)
 	} else if ((card->host->caps & MMC_CAP_UHS_DDR50) &&
 		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_DDR50) &&
 		    (card->host->f_max > UHS_DDR50_MIN_DTR)) {
-			card->sd_bus_speed = UHS_DDR50_BUS_SPEED;
+			card->sd_bus_speed = UHS_SDR25_BUS_SPEED;
 	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
 		    MMC_CAP_UHS_SDR50)) && (card->sw_caps.sd3_bus_mode &
 		    SD_MODE_UHS_SDR50) &&
 		    (card->host->f_max > UHS_SDR50_MIN_DTR)) {
-			card->sd_bus_speed = UHS_SDR50_BUS_SPEED;
+			card->sd_bus_speed = UHS_SDR25_BUS_SPEED;
 	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
 		    MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR25)) &&
 		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR25) &&
@@ -971,7 +979,11 @@ int mmc_sd_setup_card(struct mmc_host *host, struct mmc_card *card,
 			ro = host->ops->get_ro(host);
 			mmc_host_clk_release(card->host);
 		}
-
+		if ( card->csd.perm_write_protect || card->csd.tmp_write_protect )
+		{
+			ro = 1;
+			printk("SD card perm_wp:%d tmp_wp:%d\n", card->csd.perm_write_protect, card->csd.tmp_write_protect);
+		}
 		if (ro < 0) {
 			pr_warning("%s: host does not "
 				"support reading read-only "

@@ -1,3 +1,6 @@
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2016 KYOCERA Corporation
+
 ccflags-y += -I$(src)
 
 mdss-mdp3-objs = mdp3.o mdp3_dma.o mdp3_ctrl.o dsi_status_v2.o
@@ -49,3 +52,14 @@ obj-$(CONFIG_FB_MSM_QPIC_ILI_QVGA_PANEL) += qpic_panel_ili_qvga.o
 
 obj-$(CONFIG_FB_MSM_MDSS) += mdss_fb.o mdss_util.o
 obj-$(CONFIG_COMPAT) += mdss_compat_utils.o
+
+obj-$(CONFIG_DISP_EXT_UTIL) += disp_ext_util.o
+obj-$(CONFIG_DISP_EXT_DIAG) += disp_ext_diag.o
+obj-$(CONFIG_DISP_EXT_BOARD) += disp_ext_board.o
+obj-$(CONFIG_DISP_EXT_PP) += disp_ext_pp.o
+
+obj-$(CONFIG_DISP_EXT_SUB) += disp_ext_sub.o
+obj-$(CONFIG_DISP_EXT_SUB) += disp_ext_sub_ctrl.o
+obj-$(CONFIG_DISP_EXT_SUB) += disp_ext_sub_panel.o
+obj-$(CONFIG_DISP_EXT_SUB) += disp_ext_sub_dbg.o
+obj-$(CONFIG_DISP_EXT_I2C) += disp_ext_i2c.o

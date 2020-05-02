@@ -1,3 +1,7 @@
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2015 KYOCERA Corporation
+#
+
 # When adding new entries keep the list in alphabetical order
 CFLAGS_scm.o :=$(call as-instr,.arch_extension sec,-DREQUIRES_SEC=1)
 
@@ -79,3 +83,12 @@ obj-$(CONFIG_MSM_SYSTEM_HEALTH_MONITOR) += system_health_monitor.o
 obj-$(CONFIG_MSM_RTB) += msm_rtb-hotplug.o
 obj-$(CONFIG_QCOM_EARLY_RANDOM)	+= early_random.o
 obj-$(CONFIG_MSM_PACMAN)        += msm_pacman.o
+
+#OEM FACT
+obj-y += oem_fact.o
+
+#OEM BFSS
+obj-y += OEM_bfss.o
+
+#KC QALOG
+obj-y += kclog_smem.o

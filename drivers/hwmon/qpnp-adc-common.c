@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -45,89 +49,40 @@
    their framework which is 0.1DegC. True resolution of 0.1DegC
    will result in the below table size to increase by 10 times */
 static const struct qpnp_vadc_map_pt adcmap_btm_threshold[] = {
-	{-300,	1642},
-	{-200,	1544},
-	{-100,	1414},
-	{0,	1260},
-	{10,	1244},
-	{20,	1228},
-	{30,	1212},
-	{40,	1195},
-	{50,	1179},
-	{60,	1162},
-	{70,	1146},
-	{80,	1129},
-	{90,	1113},
-	{100,	1097},
-	{110,	1080},
-	{120,	1064},
-	{130,	1048},
-	{140,	1032},
-	{150,	1016},
-	{160,	1000},
-	{170,	985},
-	{180,	969},
-	{190,	954},
-	{200,	939},
-	{210,	924},
-	{220,	909},
-	{230,	894},
-	{240,	880},
-	{250,	866},
-	{260,	852},
-	{270,	838},
-	{280,	824},
-	{290,	811},
-	{300,	798},
-	{310,	785},
-	{320,	773},
-	{330,	760},
-	{340,	748},
-	{350,	736},
-	{360,	725},
-	{370,	713},
-	{380,	702},
-	{390,	691},
-	{400,	681},
-	{410,	670},
-	{420,	660},
-	{430,	650},
-	{440,	640},
-	{450,	631},
-	{460,	622},
-	{470,	613},
-	{480,	604},
-	{490,	595},
-	{500,	587},
-	{510,	579},
-	{520,	571},
-	{530,	563},
-	{540,	556},
-	{550,	548},
-	{560,	541},
-	{570,	534},
-	{580,	527},
-	{590,	521},
-	{600,	514},
-	{610,	508},
-	{620,	502},
-	{630,	496},
-	{640,	490},
-	{650,	485},
-	{660,	281},
-	{670,	274},
-	{680,	267},
-	{690,	260},
-	{700,	254},
-	{710,	247},
-	{720,	241},
-	{730,	235},
-	{740,	229},
-	{750,	224},
-	{760,	218},
-	{770,	213},
-	{780,	208},
-	{790,	203}
+	{-400,	1751},
+	{-350,	1732},
+	{-300,	1706},
+	{-250,	1672},
+	{-200,	1630},
+	{-150,	1577},
+	{-100,	1514},
+	{-50,	1440},
+	{00,	1356},
+	{50,	1264},
+	{100,	1165},
+	{150,	1064},
+	{200,	963},
+	{250,	865},
+	{300,	773},
+	{350,	688},
+	{400,	612},
+	{450,	545},
+	{500,	486},
+	{550,	435},
+	{600,	392},
+	{650,	355},
+	{700,	324},
+	{750,	298},
+	{800,	276},
+	{850,	258},
+	{900,	242},
+	{950,	229},
+	{1000,	218},
+	{1050,	209},
+	{1100,	201},
+	{1150,	194},
+	{1200,	189},
+	{1250,	184}
 };
 
 static const struct qpnp_vadc_map_pt adcmap_qrd_btm_threshold[] = {
@@ -710,6 +665,44 @@ static const struct qpnp_vadc_map_pt adcmap_ncp03wf683[] = {
 	{40,	115},
 	{35,	120},
 	{30,	125}
+};
+
+/* Voltage to temperature for oem */
+static const struct qpnp_vadc_map_pt adcmap_nonpull_oem[] = {
+	{1793,	-40},
+	{1790,	-35},
+	{1786,	-30},
+	{1780,	-25},
+	{1772,	-20},
+	{1761,	-15},
+	{1748,	-10},
+	{1730,	-5},
+	{1707,	0},
+	{1680,	5},
+	{1645,	10},
+	{1604,	15},
+	{1556,	20},
+	{1500,	25},
+	{1436,	30},
+	{1366,	35},
+	{1289,	40},
+	{1208,	45},
+	{1123,	50},
+	{1036,	55},
+	{950,	60},
+	{865,	65},
+	{783,	70},
+	{705,	75},
+	{633,	80},
+	{565,	85},
+	{504,	90},
+	{448,	95},
+	{398,	100},
+	{354,	105},
+	{314,	110},
+	{278,	115},
+	{247,	120},
+	{220,	125}
 };
 
 static int32_t qpnp_adc_map_voltage_temp(const struct qpnp_vadc_map_pt *pts,
@@ -1997,3 +1990,22 @@ int32_t qpnp_adc_get_devicetree_data(struct spmi_device *spmi,
 	return 0;
 }
 EXPORT_SYMBOL(qpnp_adc_get_devicetree_data);
+
+int32_t oem_adc_scale_therm_nonpull(struct qpnp_vadc_chip *chip,
+		int32_t adc_code,
+		const struct qpnp_adc_properties *adc_properties,
+		const struct qpnp_vadc_chan_properties *chan_properties,
+		struct qpnp_vadc_result *adc_chan_result)
+{
+	int64_t therm_voltage = 0;
+
+	therm_voltage = qpnp_adc_scale_ratiometric_calib(adc_code,
+			adc_properties, chan_properties);
+
+	qpnp_adc_map_voltage_temp(adcmap_nonpull_oem,
+		ARRAY_SIZE(adcmap_nonpull_oem),
+		therm_voltage, &adc_chan_result->physical);
+
+	return 0;
+}
+EXPORT_SYMBOL(oem_adc_scale_therm_nonpull);

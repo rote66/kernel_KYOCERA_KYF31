@@ -13,6 +13,11 @@
 /*
  * I2C controller driver for Qualcomm Technologies Inc platforms
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #define pr_fmt(fmt) "#%d " fmt "\n", __LINE__
 
@@ -37,6 +42,27 @@
 #include <linux/msm-bus.h>
 #include <linux/msm-bus-board.h>
 #include <linux/i2c/i2c-msm-v2.h>
+
+#include <linux/gpio.h>
+
+#define GPIO_I2C_PRIM_SDA       6
+#define GPIO_I2C_PRIM_SCL       7
+#define GPIO_I2C_CAM_SDA       29
+#define GPIO_I2C_CAM_SCL       30
+#define GPIO_I2C_SMB_SDA       14
+#define GPIO_I2C_SMB_SCL       15
+#define GPIO_I2C_TP_SDA        18
+#define GPIO_I2C_TP_SCL        19
+#define GPIO_NUM_OFFSET       911
+
+#define GPIO_S7708A_I2C_SDA     GPIO_I2C_PRIM_SDA
+#define GPIO_S7708A_I2C_SCL     GPIO_I2C_PRIM_SCL
+
+
+#define MSM_8909_BLSP1_QUP1_I2C_BUS_ID   1
+#define MSM_8909_BLSP1_QUP3_I2C_BUS_ID   3
+#define MSM_8909_BLSP1_QUP4_I2C_BUS_ID   4
+#define MSM_8909_BLSP1_QUP5_I2C_BUS_ID   5
 
 #ifdef DEBUG
 static const enum msm_i2_debug_level DEFAULT_DBG_LVL = MSM_DBG;
@@ -408,6 +434,8 @@ struct i2c_msm_clk_div_fld {
  */
 static struct i2c_msm_clk_div_fld i2c_msm_clk_div_map[] = {
 	{KHz(100), 124, 62},
+	{KHz(340),  34, 17},
+	{KHz(385),  30, 15},
 	{KHz(400),  28, 14},
 	{KHz(1000),  8,  5},
 };
@@ -2187,6 +2215,25 @@ static int i2c_msm_pm_clk_prepare_enable(struct i2c_msm_ctrl *ctrl)
 	return ret;
 }
 
+static void i2c_msm_clk_unvote_disable_unprepare(struct i2c_adapter *adap)
+{
+	struct i2c_msm_ctrl  *ctrl = i2c_get_adapdata(adap);
+	
+	i2c_msm_pm_clk_disable_unprepare(ctrl);
+	i2c_msm_clk_path_unvote(ctrl);
+}
+
+static int i2c_msm_clk_vote_prepare_enable(struct i2c_adapter *adap)
+{
+	int ret = 0;
+	struct i2c_msm_ctrl  *ctrl = i2c_get_adapdata(adap);
+	
+	i2c_msm_clk_path_vote(ctrl);
+	ret = i2c_msm_pm_clk_prepare_enable(ctrl);
+	
+	return ret;
+}
+
 static int i2c_msm_pm_xfer_start(struct i2c_msm_ctrl *ctrl)
 {
 	int ret;
@@ -2339,6 +2386,169 @@ i2c_msm_frmwrk_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		i2c_msm_prof_evnt_dump(ctrl);
 
 	i2c_msm_pm_xfer_end(ctrl);
+	return ret;
+}
+
+static int
+i2c_msm_pinctrl_set(struct i2c_msm_ctrl *ctrl, struct pinctrl_state *pins_state, const char *pins_state_name)
+{
+	int ret = 0;
+
+	if (!IS_ERR_OR_NULL(pins_state)) {
+		int ret = pinctrl_select_state(ctrl->rsrcs.pinctrl, pins_state);
+		if (ret)
+			dev_err(ctrl->dev,
+			"error pinctrl_select_state(%s) err:%d\n",
+			pins_state_name, ret);
+	} else {
+		dev_err(ctrl->dev,
+			"error pinctrl state-name:'%s' is not configured\n",
+			pins_state_name);
+	}
+	
+	return ret;
+}
+
+static int
+i2c_msm_compulsory_reset(struct i2c_adapter *adap, bool init_flg)
+{
+	int ret = 0;
+	struct i2c_msm_ctrl  *ctrl = i2c_get_adapdata(adap);
+	struct pinctrl_state *pins_state;
+	const char           *pins_state_name;
+	int i;
+	int scl = 0;
+	int sda = 0;
+
+	if(((adap->nr) == MSM_8909_BLSP1_QUP1_I2C_BUS_ID) ||
+	   ((adap->nr) == MSM_8909_BLSP1_QUP4_I2C_BUS_ID)){
+		
+		switch(adap->nr) {
+			case MSM_8909_BLSP1_QUP1_I2C_BUS_ID:
+				scl = GPIO_I2C_PRIM_SCL + GPIO_NUM_OFFSET;
+				sda = GPIO_I2C_PRIM_SDA + GPIO_NUM_OFFSET;
+				break;
+			case MSM_8909_BLSP1_QUP4_I2C_BUS_ID:
+				scl = GPIO_I2C_SMB_SCL + GPIO_NUM_OFFSET;
+				sda = GPIO_I2C_SMB_SDA + GPIO_NUM_OFFSET;
+				break;
+			default:
+				break;
+		}
+
+		if(init_flg == true){
+			gpio_request(scl, "i2c_init_device");
+			gpio_request(sda, "i2c_init_device");
+		}
+
+		pins_state      = ctrl->rsrcs.gpio_state_gpio;
+		pins_state_name = I2C_MSM_PINCTRL_GPIO;
+
+		if (!IS_ERR_OR_NULL(pins_state)) {
+			int ret = pinctrl_select_state(ctrl->rsrcs.pinctrl, pins_state);
+			if (ret)
+				dev_err(ctrl->dev,
+				"error pinctrl_select_state(%s) err:%d\n",
+				pins_state_name, ret);
+		} else {
+			dev_err(ctrl->dev,
+				"error pinctrl state-name:'%s' is not configured\n",
+				pins_state_name);
+		}
+
+		udelay(5);
+
+		for (i = 0; i < 9; i++) {
+			gpio_direction_output(sda, 0);
+			udelay(5);
+			gpio_direction_output(scl,0);
+			udelay(5);
+			gpio_direction_input(sda);
+			udelay(5);
+			gpio_direction_input(scl);
+			udelay(5);
+		}
+		udelay(10);
+		for (i = 0; i < 1; i++) {
+			gpio_direction_output(scl,0);
+			udelay(5);
+			gpio_direction_output(sda, 0);
+			udelay(5);
+			gpio_direction_input(scl);
+			udelay(5);
+			gpio_direction_input(sda);
+			udelay(5);
+		}
+		udelay(10);
+
+		pins_state      = ctrl->rsrcs.gpio_state_active;
+		pins_state_name = I2C_MSM_PINCTRL_ACTIVE;
+
+		if (!IS_ERR_OR_NULL(pins_state)) {
+			int ret = pinctrl_select_state(ctrl->rsrcs.pinctrl, pins_state);
+			if (ret)
+				dev_err(ctrl->dev,
+				"error pinctrl_select_state(%s) err:%d\n",
+				pins_state_name, ret);
+		} else {
+			dev_err(ctrl->dev,
+				"error pinctrl state-name:'%s' is not configured\n",
+				pins_state_name);
+		}
+
+		dev_err(&adap->dev, "%s : [SCL] gpioNo=%d, [SDA] gpioNo=%d\n", __func__, scl, sda);
+
+		if(init_flg == true){
+			gpio_free(scl);
+			gpio_free(sda);
+		}
+	}
+	
+	return ret;
+}
+
+static int
+i2c_msm_pinctrl_set_default(struct i2c_adapter *adap)
+{
+	int ret = 0;
+	struct i2c_msm_ctrl  *ctrl = i2c_get_adapdata(adap);
+
+	if((adap->nr) == MSM_8909_BLSP1_QUP5_I2C_BUS_ID) {
+    	ret = i2c_msm_pinctrl_set(ctrl, ctrl->rsrcs.gpio_state_default, I2C_MSM_PINCTRL_DEFAULT);
+	} else {
+		ret = -EPERM;	
+	}
+
+	return ret;
+}
+
+static int
+i2c_msm_pinctrl_set_active(struct i2c_adapter *adap)
+{
+	int ret = 0;
+	struct i2c_msm_ctrl  *ctrl = i2c_get_adapdata(adap);
+
+	if((adap->nr) == MSM_8909_BLSP1_QUP5_I2C_BUS_ID) {
+    	ret = i2c_msm_pinctrl_set(ctrl, ctrl->rsrcs.gpio_state_active, I2C_MSM_PINCTRL_ACTIVE);
+	} else {
+		ret = -EPERM;	
+	}
+
+	return ret;
+}
+
+static int
+i2c_msm_pinctrl_set_sleep(struct i2c_adapter *adap)
+{
+	int ret = 0;
+	struct i2c_msm_ctrl  *ctrl = i2c_get_adapdata(adap);
+
+	if((adap->nr) == MSM_8909_BLSP1_QUP5_I2C_BUS_ID) {
+    	ret = i2c_msm_pinctrl_set(ctrl, ctrl->rsrcs.gpio_state_suspend, I2C_MSM_PINCTRL_SUSPEND);
+	} else {
+		ret = -EPERM;	
+	}
+
 	return ret;
 }
 
@@ -2568,6 +2778,12 @@ static int i2c_msm_rsrcs_gpio_pinctrl_init(struct i2c_msm_ctrl *ctrl)
 	ctrl->rsrcs.gpio_state_suspend =
 		i2c_msm_rsrcs_gpio_get_state(ctrl, I2C_MSM_PINCTRL_SUSPEND);
 
+	ctrl->rsrcs.gpio_state_gpio =
+		i2c_msm_rsrcs_gpio_get_state(ctrl, I2C_MSM_PINCTRL_GPIO);
+
+	ctrl->rsrcs.gpio_state_default =
+		i2c_msm_rsrcs_gpio_get_state(ctrl, I2C_MSM_PINCTRL_DEFAULT);
+
 	return 0;
 }
 
@@ -2662,6 +2878,7 @@ static void i2c_msm_pm_suspend(struct device *dev)
 		return;
 	}
 	i2c_msm_dbg(ctrl, MSM_DBG, "suspending...");
+	if (ctrl->adapter.nr != MSM_8909_BLSP1_QUP5_I2C_BUS_ID)
 	i2c_msm_pm_pinctrl_state(ctrl, false);
 	i2c_msm_clk_path_unvote(ctrl);
 
@@ -2689,6 +2906,7 @@ static int i2c_msm_pm_resume(struct device *dev)
 	i2c_msm_dbg(ctrl, MSM_DBG, "resuming...");
 
 	i2c_msm_clk_path_vote(ctrl);
+	if (ctrl->adapter.nr != MSM_8909_BLSP1_QUP5_I2C_BUS_ID)
 	i2c_msm_pm_pinctrl_state(ctrl, true);
 	ctrl->pwr_state = I2C_MSM_PM_RT_ACTIVE;
 	return 0;
@@ -2736,6 +2954,7 @@ static int i2c_msm_pm_sys_resume_noirq(struct device *dev)
 {
 	struct i2c_msm_ctrl *ctrl = dev_get_drvdata(dev);
 	i2c_msm_dbg(ctrl, MSM_DBG, "pm_sys_noirq: resuming...");
+
 	mutex_lock(&ctrl->xfer.mtx);
 	ctrl->pwr_state = I2C_MSM_PM_RT_SUSPENDED;
 	mutex_unlock(&ctrl->xfer.mtx);
@@ -2796,6 +3015,12 @@ static u32 i2c_msm_frmwrk_func(struct i2c_adapter *adap)
 static const struct i2c_algorithm i2c_msm_frmwrk_algrtm = {
 	.master_xfer	= i2c_msm_frmwrk_xfer,
 	.functionality	= i2c_msm_frmwrk_func,
+	.compulsory_reset = i2c_msm_compulsory_reset,
+	.pinctrl_set_default = i2c_msm_pinctrl_set_default,
+	.pinctrl_set_active  = i2c_msm_pinctrl_set_active,
+	.pinctrl_set_sleep   = i2c_msm_pinctrl_set_sleep,
+	.clk_vote_prepare_enable = i2c_msm_clk_vote_prepare_enable,
+	.clk_unvote_disable_unprepare = i2c_msm_clk_unvote_disable_unprepare,
 };
 
 static const char const *i2c_msm_adapter_name = "MSM-I2C-v2-adapter";
@@ -2822,6 +3047,8 @@ static int i2c_msm_frmwrk_reg(struct platform_device *pdev,
 		ctrl->adapter.dev.of_node = pdev->dev.of_node;
 		of_i2c_register_devices(&ctrl->adapter);
 	}
+	
+	i2c_reset_device(&ctrl->adapter, true);
 
 	return ret;
 }

@@ -9,6 +9,13 @@
  * (at your option) any later version.
  */
 
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
+
 /* #define VERBOSE_DEBUG */
 
 #include <linux/kallsyms.h>
@@ -1609,6 +1616,12 @@ unknown:
 			break;
 
 		case USB_RECIP_ENDPOINT:
+#ifndef FEATURE_KYOCERA_DATA_QCOM
+			if(cdev->config == NULL)
+			{
+				break;
+			}
+#endif /* FEATURE_KYOCERA_DATA_QCOM */
 			endp = ((w_index & 0x80) >> 3) | (w_index & 0x0f);
 			list_for_each_entry(f, &cdev->config->functions, list) {
 				if (test_bit(endp, f->endpoints))

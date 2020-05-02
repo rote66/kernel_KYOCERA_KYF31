@@ -193,6 +193,14 @@
  * of the Gadget, USB Mass Storage, and SCSI protocols.
  */
 
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2011 KYOCERA Corporation
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
 
 /* #define VERBOSE_DEBUG */
 /* #define DUMP_MSGS */
@@ -218,6 +226,8 @@
 #include <linux/usb/gadget.h>
 #include <linux/usb/composite.h>
 
+#include <linux/switch.h>
+
 #include "gadget_chips.h"
 
 
@@ -227,6 +237,16 @@
 #define FSG_DRIVER_VERSION	"2009/09/11"
 
 static const char fsg_string_interface[] = "Mass Storage";
+
+#define VENDOR_NAME		"KYOCERA"
+#define PRODUCT_NAME		"MSS"
+#define RELEASE_NO		0x0100
+#define KC_VENDOR_NAME		"change_mode"
+
+#define FSG_NO_INTR_EP 1
+#define FSG_NO_DEVICE_STRINGS    1
+#define FSG_NO_OTG               1
+#define FSG_NO_INTR_EP           1
 
 #include "storage_common.c"
 
@@ -315,6 +335,13 @@ struct fsg_common {
 	char inquiry_string[8 + 16 + 4 + 1];
 
 	struct kref		ref;
+
+#ifndef FEATURE_KYOCERA_DATA_QCOM
+	/* vendor_cmd (1 char), vendor_data (16 chars) */
+	unsigned char vendor_data[1 + 16];
+	unsigned char vendor_data2[1 + 16];
+#endif /* FEATURE_KYOCERA_DATA_QCOM */
+    struct switch_dev       *sdev;
 };
 
 struct fsg_config {
@@ -334,7 +361,7 @@ struct fsg_config {
 
 	const char *vendor_name;		/*  8 characters or less */
 	const char *product_name;		/* 16 characters or less */
-
+    u16   release;
 	char			can_stall;
 };
 
@@ -2199,6 +2226,35 @@ static int do_scsi_command(struct fsg_common *common)
 		/* Fall through */
 
 	default:
+		if (common->cmnd[0] == common->vendor_data[0]) {
+			common->data_size_from_cmnd = 0;
+			/* check cmd */
+			if (!strncmp(&common->cmnd[1], &common->vendor_data[1], 15)) {
+				if (fsg_is_set(common)) {
+	        switch_set_state(common->sdev, 0);
+					switch_set_state(common->sdev, 1);
+					reply = 0;
+				}
+				else {
+					printk(KERN_ERR "fsg is not set\n");
+					reply = -EINVAL;
+				}
+			} else if(!strncmp(&common->cmnd[1], &common->vendor_data2[1], 15)) {
+				if (fsg_is_set(common)) {
+	                switch_set_state(common->sdev, 0);
+					switch_set_state(common->sdev, 2);
+					reply = 0;
+				}
+				else {
+					printk(KERN_ERR "fsg is not set\n");
+					reply = -EINVAL;
+				}
+			} else {
+				printk(KERN_ERR "check_cmd error!!\n");
+				reply = -EINVAL;
+			}
+			break;
+		}
 unknown_cmnd:
 		common->data_size_from_cmnd = 0;
 		sprintf(unknown, "Unknown x%02x", common->cmnd[0]);
@@ -2881,6 +2937,10 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 	if (rc != 0)
 		return ERR_PTR(rc);
 
+	cfg->vendor_name = VENDOR_NAME;
+	cfg->product_name = PRODUCT_NAME;
+	cfg->release = RELEASE_NO;
+
 	/* Find out how many LUNs there should be */
 	nluns = cfg->nluns;
 	if (nluns < 1 || nluns > FSG_MAX_LUNS) {
@@ -2914,6 +2974,19 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 	common->ep0 = gadget->ep0;
 	common->ep0req = cdev->req;
 	common->cdev = cdev;
+
+#if 1
+	fsg_intf_desc.iInterface = 0;
+#else
+	/* Maybe allocate device-global string IDs, and patch descriptors */
+	if (fsg_strings[FSG_STRING_INTERFACE].id == 0) {
+		rc = usb_string_id(cdev);
+		if (unlikely(rc < 0))
+			goto error_release;
+		fsg_strings[FSG_STRING_INTERFACE].id = rc;
+		fsg_intf_desc.iInterface = rc;
+	}
+#endif
 
 	/*
 	 * Create the LUNs, open their backing files, and register the
@@ -3149,10 +3222,12 @@ autoconf_fail:
 
 /****************************** ADD FUNCTION ******************************/
 
+#if 0
 static struct usb_gadget_strings *fsg_strings_array[] = {
 	&fsg_stringtab,
 	NULL,
 };
+#endif
 
 static int fsg_bind_config(struct usb_composite_dev *cdev,
 			   struct usb_configuration *c,
@@ -3161,6 +3236,9 @@ static int fsg_bind_config(struct usb_composite_dev *cdev,
 	struct fsg_dev *fsg;
 	int rc;
 
+#if 1
+	fsg_intf_desc.iInterface = 0;
+#else
 	/* Maybe allocate device-global string IDs, and patch descriptors */
 	if (fsg_strings[FSG_STRING_INTERFACE].id == 0) {
 		rc = usb_string_id(cdev);
@@ -3169,13 +3247,16 @@ static int fsg_bind_config(struct usb_composite_dev *cdev,
 		fsg_strings[FSG_STRING_INTERFACE].id = rc;
 		fsg_intf_desc.iInterface = rc;
 	}
+#endif
 
 	fsg = kzalloc(sizeof *fsg, GFP_KERNEL);
 	if (unlikely(!fsg))
 		return -ENOMEM;
 
 	fsg->function.name        = FSG_DRIVER_DESC;
+#if 0
 	fsg->function.strings     = fsg_strings_array;
+#endif
 	fsg->function.bind        = fsg_bind;
 	fsg->function.unbind      = fsg_unbind;
 	fsg->function.setup       = fsg_setup;

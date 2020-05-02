@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -27,6 +31,7 @@
 #include "mdss_dsi.h"
 #include "mdss_panel.h"
 #include "mdss_debug.h"
+#include "disp_ext.h"
 
 #define VSYNC_PERIOD 17
 
@@ -1294,6 +1299,12 @@ int mdss_dsi_cmds_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	int len = 0;
 	struct mdss_dsi_ctrl_pdata *mctrl = NULL;
 
+#ifdef CONFIG_DISP_EXT_BOARD
+	if (disp_ext_board_get_panel_detect() == -1) {
+		return 1;
+	}
+#endif /* CONFIG_DISP_EXT_BOARD */
+
 	/*
 	 * Turn on cmd mode in order to transmit the commands.
 	 * For video mode, do not send cmds more than one pixel line,
@@ -1373,6 +1384,11 @@ int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 	char cmd;
 	struct mdss_dsi_ctrl_pdata *mctrl = NULL;
 
+#ifdef CONFIG_DISP_EXT_BOARD
+	if (disp_ext_board_get_panel_detect() == -1) {
+		return 1;
+	}
+#endif /* CONFIG_DISP_EXT_BOARD */
 
 	if (ctrl->panel_data.panel_info.panel_ack_disabled) {
 		pr_err("%s: ACK from Client not supported\n", __func__);
@@ -2018,6 +2034,12 @@ int mdss_dsi_cmdlist_commit(struct mdss_dsi_ctrl_pdata *ctrl, int from_mdp)
 	else
 		ret = mdss_dsi_cmdlist_tx(ctrl, req);
 
+#ifdef CONFIG_DISP_EXT_DIAG
+	if (disp_ext_diag_event_flag_check() & REG_ERR_CHECK) {
+		mdss_dsi_cmd_bta_sw_trigger(&ctrl->panel_data);
+	}
+#endif /* CONFIG_DISP_EXT_DIAG */
+
 	if (req->flags & CMD_REQ_HS_MODE)
 		mdss_dsi_set_tx_power_mode(1, &ctrl->panel_data);
 
@@ -2123,6 +2145,7 @@ static int dsi_event_thread(void *data)
 				ctrl->recovery->fxn(ctrl->recovery->data,
 					MDP_INTF_DSI_CMD_FIFO_UNDERFLOW);
 				mdss_dsi_clk_ctrl(ctrl, DSI_ALL_CLKS, 0);
+				ctrl->dsi_recovery_count++;
 			}
 			mutex_unlock(&ctrl->mutex);
 
@@ -2156,6 +2179,7 @@ static int dsi_event_thread(void *data)
 				mdss_dsi_err_intr_ctrl(ctrl,
 						DSI_INTR_ERROR_MASK, 1);
 				mdss_dsi_clk_ctrl(ctrl, DSI_ALL_CLKS, 0);
+				ctrl->dsi_recovery_count++;
 			}
 			mutex_unlock(&dsi_mtx);
 		}
@@ -2198,6 +2222,12 @@ void mdss_dsi_ack_err_status(struct mdss_dsi_ctrl_pdata *ctrl)
 	status = MIPI_INP(base + 0x0068);/* DSI_ACK_ERR_STATUS */
 
 	if (status) {
+#ifdef CONFIG_DISP_EXT_DIAG
+		if (disp_ext_diag_event_flag_check() & IMG_ERR_CHECK)
+			disp_ext_diag_count_err_status(status);
+		if (disp_ext_diag_event_flag_check() & REG_ERR_CHECK)
+			disp_ext_diag_set_ack_err_stat(status);
+#endif /* CONFIG_DISP_EXT_DIAG */
 		MIPI_OUTP(base + 0x0068, status);
 		/* Writing of an extra 0 needed to clear error bits */
 		MIPI_OUTP(base + 0x0068, 0);
@@ -2314,6 +2344,7 @@ void mdss_dsi_error(struct mdss_dsi_ctrl_pdata *ctrl)
 	MIPI_OUTP(ctrl->ctrl_base + 0x0110, intr);
 
 	dsi_send_events(ctrl, DSI_EV_MDP_BUSY_RELEASE, 0);
+	ctrl->dsi_intr_error_count++;
 }
 
 irqreturn_t mdss_dsi_isr(int irq, void *ptr)

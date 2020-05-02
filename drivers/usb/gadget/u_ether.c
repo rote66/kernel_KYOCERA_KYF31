@@ -11,6 +11,12 @@
  * (at your option) any later version.
  */
 
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
+
 /* #define VERBOSE_DEBUG */
 
 #include <linux/kernel.h>
@@ -145,6 +151,8 @@ struct eth_dev {
 struct sg_ctx {
 	struct sk_buff_head	skbs;
 };
+
+static 	u8	ether_local_addr[ETH_ALEN];
 
 
 static void uether_debugfs_init(struct eth_dev *dev, const char *n);
@@ -1172,6 +1180,9 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 		req->context = skb;
 	}
 
+	req->complete = tx_complete;
+
+#if 0
 	/* NCM requires no zlp if transfer is dwNtbInMaxSize */
 	if (dev->port_usb->is_fixed &&
 	    length == dev->port_usb->fixed_in_len &&
@@ -1179,15 +1190,24 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 		req->zero = 0;
 	else
 		req->zero = 1;
+#endif
 
 	/* use zlp framing on tx for strict CDC-Ether conformance,
 	 * though any robust network rx path ignores extra padding.
 	 * and some hardware doesn't like to write zlps.
 	 */
+#if 0
 	if (req->zero && !dev->zlp && (length % in->maxpacket) == 0) {
 		req->zero = 0;
 		length++;
 	}
+#else
+    req->zero = 1;
+    if (!dev->zlp && (length % in->maxpacket) == 0) {
+    	req->zero = 0;
+        length++;
+     }
+#endif
 
 	req->length = length;
 
@@ -1635,8 +1655,13 @@ struct eth_dev *gether_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
 		dev_warn(&g->dev,
 			"using random %s ethernet address\n", "host");
 
-	if (ethaddr)
-		memcpy(ethaddr, dev->host_mac, ETH_ALEN);
+	if (!ether_local_addr[0]){
+		memcpy(ether_local_addr, ethaddr, ETH_ALEN);
+		memcpy(net->dev_addr, ethaddr, ETH_ALEN);
+	}
+	else{
+		memcpy(net->dev_addr, ether_local_addr, ETH_ALEN);
+	}
 
 	net->netdev_ops = &eth_netdev_ops;
 
@@ -2040,6 +2065,7 @@ static int __init gether_init(void)
 		return -ENOMEM;
 	}
 
+	memset(ether_local_addr,0x00,ETH_ALEN);
 	return 0;
 }
 module_init(gether_init);

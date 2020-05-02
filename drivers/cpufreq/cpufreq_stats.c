@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
+/*
  *  drivers/cpufreq/cpufreq_stats.c
  *
  *  Copyright (C) 2003-2004 Venkatesh Pallipadi <venkatesh.pallipadi@intel.com>.
@@ -14,6 +18,13 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <asm/cputime.h>
+
+#ifdef KC_BATTERY_LOG_ENABLED
+#include <linux/clog.h>
+#define KCBLOG(tag, ...)  CLOG(tag, ##__VA_ARGS__)
+#else
+#define KCBLOG(tag, ...) do{} while(0)
+#endif
 
 static spinlock_t cpufreq_stats_lock;
 
@@ -151,6 +162,23 @@ static int freq_table_get_index(struct cpufreq_stats *stat, unsigned int freq)
 	return -1;
 }
 
+inline void kcblog_output_cpufreq(unsigned int cpu){
+#ifdef KC_BATTERY_LOG_ENABLED
+	ssize_t len = 0;
+	char buf[512];
+	int i = 0;
+	struct cpufreq_stats *stat = per_cpu(cpufreq_stats_table, cpu);
+	if (stat) {
+		for (i = 0; i < stat->state_num; i++) {
+			if (len >= sizeof(buf))
+				break;
+			len += snprintf(buf + len, sizeof(buf) - len , "%u %llu,", stat->freq_table[i],
+				(unsigned long long) cputime64_to_clock_t(stat->time_in_state[i]));
+		}
+		KCBLOG("cpu","down cpu%u %s\n",cpu,buf);
+	}
+#endif
+}
 static void __cpufreq_stats_free_table(struct cpufreq_policy *policy)
 {
 	struct cpufreq_stats *stat = per_cpu(cpufreq_stats_table, policy->cpu);
@@ -159,6 +187,7 @@ static void __cpufreq_stats_free_table(struct cpufreq_policy *policy)
 		return;
 
 	pr_debug("%s: Free stat table\n", __func__);
+	kcblog_output_cpufreq(policy->cpu);
 
 	sysfs_remove_group(&policy->kobj, &stats_attr_group);
 	kfree(stat->time_in_state);

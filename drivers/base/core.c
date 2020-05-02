@@ -9,6 +9,11 @@
  * This file is released under the GPLv2
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
 
 #include <linux/device.h>
 #include <linux/err.h>
@@ -1843,10 +1848,13 @@ EXPORT_SYMBOL_GPL(device_move);
 /**
  * device_shutdown - call ->shutdown() on each device to shutdown.
  */
+extern bool msm_is_pwroff_mode(void);       /* For VBUS POLLING */
+extern void diag_end_sequence_output(void); /* For VBUS POLLING */
 void device_shutdown(void)
 {
 	struct device *dev, *parent;
 
+	if(msm_is_pwroff_mode())diag_end_sequence_output();
 	spin_lock(&devices_kset->list_lock);
 	/*
 	 * Walk the devices list backward, shutting down each in turn.

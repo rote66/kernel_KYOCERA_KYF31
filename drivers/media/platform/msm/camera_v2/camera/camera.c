@@ -9,6 +9,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/* This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 
 #include <linux/of.h>
@@ -531,6 +534,9 @@ static void camera_v4l2_vb2_q_release(struct file *filep)
 	vb2_queue_release(&sp->vb2_q);
 }
 
+#define CAMERA_RESTART_CNT 2000
+static int open_cnt = 0;
+
 static int camera_v4l2_open(struct file *filep)
 {
 	int rc = 0;
@@ -578,6 +584,23 @@ static int camera_v4l2_open(struct file *filep)
 					__func__);
 			pr_err("%s : Line %d rc %d\n", __func__, __LINE__, rc);
 			goto command_ack_q_fail;
+		}
+
+		if ( open_cnt++ >= CAMERA_RESTART_CNT ) {
+			open_cnt = 0;
+			rc = -ECONNREFUSED;
+			pr_err("%s :restart request\n", __func__);
+			goto post_fail;
+		}
+
+		camera_pack_event(filep, MSM_CAMERA_SESSION_CHECK, 0, -1, &event);
+		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
+		if (rc < 0) {
+			pr_err("%s : posting of SESSION_CHECK event failed\n",
+					__func__);
+			pr_err("%s : Line %d rc %d\n", __func__, __LINE__, rc);
+			rc = -ECONNREFUSED;
+			goto post_fail;
 		}
 
 		camera_pack_event(filep, MSM_CAMERA_NEW_SESSION, 0, -1, &event);

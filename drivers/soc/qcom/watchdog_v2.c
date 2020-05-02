@@ -9,6 +9,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -26,6 +31,7 @@
 #include <linux/cpu.h>
 #include <linux/cpu_pm.h>
 #include <linux/platform_device.h>
+#include <linux/kcjlog.h>
 #include <soc/qcom/scm.h>
 #include <soc/qcom/memory_dump.h>
 #include <soc/qcom/watchdog.h>
@@ -384,6 +390,9 @@ void msm_trigger_wdog_bite(void)
 	if (!wdog_data)
 		return;
 	pr_info("Causing a watchdog bite!");
+	set_smem_kcjlog(SYSTEM_KERNEL,KIND_WDOG_HW);
+	set_smem_crash_info_data_add_line( __LINE__, __func__ );
+	set_kcj_crash_info();
 	__raw_writel(1, wdog_data->base + WDT0_BITE_TIME);
 	mb();
 	__raw_writel(1, wdog_data->base + WDT0_RST);
@@ -445,6 +454,7 @@ static void configure_bark_dump(struct msm_watchdog_data *wdog_dd)
 					virt_to_phys(wdog_dd->scm_regsave);
 			desc.args[1] = cmd_buf.len  = PAGE_SIZE;
 			desc.arginfo = SCM_ARGS(2, SCM_RW, SCM_VAL);
+			set_kcj_regsave_addr((unsigned long)cmd_buf.addr);
 
 			if (!is_scm_armv8())
 				ret = scm_call(SCM_SVC_UTIL,

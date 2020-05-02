@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -37,6 +41,12 @@
 #include <linux/batterydata-interface.h>
 #include <linux/qpnp-revid.h>
 #include <uapi/linux/vm_bms.h>
+
+#include <soc/qcom/oem_fact.h>
+
+#ifdef CONFIG_OEM_BMS
+#include "oem-bms.h"
+#endif
 
 #define _BMS_MASK(BITS, POS) \
 	((unsigned char)(((1 << (BITS)) - 1) << (POS)))
@@ -410,6 +420,11 @@ static int backup_ocv_soc(struct qpnp_bms_chip *chip, int ocv_uv, int soc)
 {
 	int rc;
 	u16 ocv_mv = ocv_uv / 1000;
+
+	if(oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_01, 6)) {
+		ocv_mv = OCV_INVALID;
+		soc = SOC_INVALID;
+	}
 
 	rc = qpnp_write_wrapper(chip, (u8 *)&ocv_mv,
 				chip->base + BMS_OCV_REG, 2);
@@ -1294,6 +1309,9 @@ static void charging_began(struct qpnp_bms_chip *chip)
 			pr_err("Unable to set FSM state rc=%d\n", rc);
 	}
 	mutex_unlock(&chip->state_change_mutex);
+#ifdef CONFIG_OEM_BMS
+	oem_bms_start_fcc_learning(chip->calculated_soc);
+#endif
 }
 
 static void charging_ended(struct qpnp_bms_chip *chip)
@@ -1594,7 +1612,7 @@ static int report_vm_bms_soc(struct qpnp_bms_chip *chip)
 	unsigned long last_change_sec;
 	bool charging;
 
-	soc = chip->calculated_soc;
+	soc = oem_bms_correct_calc_soc(chip->calculated_soc, chip->last_soc);
 
 	last_change_sec = chip->last_soc_change_sec;
 	calculate_delta_time(&last_change_sec, &time_since_last_change_sec);
@@ -1699,6 +1717,9 @@ static int report_vm_bms_soc(struct qpnp_bms_chip *chip)
 	 * during bootup if soc is 100:
 	 */
 	soc = bound_soc(soc);
+#ifdef CONFIG_OEM_BMS
+	soc = oem_bms_correct_soc(soc);
+#endif
 	if ((soc != chip->last_soc) || (soc == 100)) {
 		chip->last_soc = soc;
 		check_eoc_condition(chip);
@@ -2024,8 +2045,11 @@ static int clamp_soc_based_on_voltage(struct qpnp_bms_chip *chip, int soc)
 	}
 
 	/* only clamp when discharging */
-	if (is_battery_charging(chip))
+	if (chip->current_now < 0) {
+		pr_debug("only clamp when discharging, current_now = %d\n",
+				chip->current_now);
 		return soc;
+	}
 
 	if (soc <= 0 && vbat_uv > chip->dt.cfg_v_cutoff_uv) {
 		pr_debug("clamping soc to 1, vbat (%d) > cutoff (%d)\n",
@@ -2216,6 +2240,9 @@ static enum power_supply_property bms_power_props[] = {
 	POWER_SUPPLY_PROP_BATTERY_TYPE,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
+#ifdef CONFIG_OEM_BMS
+	POWER_SUPPLY_PROP_OEM_BMS_BATT_STATUS,
+#endif
 };
 
 static int
@@ -2294,6 +2321,11 @@ static int qpnp_vm_bms_power_get_property(struct power_supply *psy,
 		else
 			val->intval = -EINVAL;
 		break;
+#ifdef CONFIG_OEM_BMS
+	case POWER_SUPPLY_PROP_OEM_BMS_BATT_STATUS:
+		val->intval = oem_bms_get_deterioration_status();
+		break;
+#endif
 	default:
 		return -EINVAL;
 	}
@@ -2411,6 +2443,12 @@ static void battery_status_check(struct qpnp_bms_chip *chip)
 {
 	int status = get_battery_status(chip);
 
+	if (chip->calculated_soc == -EINVAL) {
+		pr_err("Not initializing calculated soc : chip->calculated_soc %d status %d chip->battery_status %d \n",
+		        chip->calculated_soc, status, chip->battery_status);
+		return;
+	}
+
 	if (chip->battery_status != status) {
 		if (status == POWER_SUPPLY_STATUS_CHARGING) {
 			pr_debug("charging started\n");
@@ -2476,6 +2514,11 @@ static void qpnp_vm_bms_ext_power_changed(struct power_supply *psy)
 	pr_debug("Triggered!\n");
 	battery_status_check(chip);
 	battery_insertion_check(chip);
+#ifdef CONFIG_OEM_BMS
+	if (is_charger_present(chip) == false) {
+		oem_bms_stop_fcc_learning();
+	}
+#endif
 
 	mutex_lock(&chip->last_soc_mutex);
 	battery_voltage_check(chip);
@@ -2763,6 +2806,12 @@ static int read_shutdown_ocv_soc(struct qpnp_bms_chip *chip)
 	u16 stored_ocv = 0;
 	int rc;
 
+	if(oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_01, 6)) {
+		chip->shutdown_soc = SOC_INVALID;
+		chip->shutdown_ocv = OCV_INVALID;
+		return -EINVAL;
+	}
+
 	rc = qpnp_read_wrapper(chip, (u8 *)&stored_ocv,
 				chip->base + BMS_OCV_REG, 2);
 	if (rc) {
@@ -2792,7 +2841,9 @@ static int read_shutdown_ocv_soc(struct qpnp_bms_chip *chip)
 		return -EINVAL;
 	}
 
-	if (!stored_soc || stored_soc == SOC_INVALID) {
+	if (((stored_soc >> 1) - 1) == 0) {
+		chip->shutdown_soc = (stored_soc >> 1);
+	} else if (!stored_soc || stored_soc == SOC_INVALID) {
 		chip->shutdown_soc = SOC_INVALID;
 		chip->shutdown_ocv = OCV_INVALID;
 		return -EINVAL;
@@ -2973,6 +3024,15 @@ static int bms_load_hw_defaults(struct qpnp_bms_chip *chip)
 	u8 val, bms_en = 0;
 	u32 interval[2], count[2], fifo[2];
 	int rc;
+
+	/* S3 SAMPLE INTERVAL CTL */
+	val = 0x3c;
+	rc = qpnp_masked_write_base(chip,
+		chip->base + S3_SAMPLE_INTVL_REG, 0xFF, val);
+	if (rc) {
+		pr_err("Unable to write s3_sample_interval_ctl rc=%d\n",
+								rc);
+	}
 
 	/* S3 OCV tolerence threshold */
 	if (chip->dt.cfg_s3_ocv_tol_uv >= 0 &&
@@ -3454,8 +3514,19 @@ static int set_battery_data(struct qpnp_bms_chip *chip)
 		pr_err("cannot read battery id err = %lld\n", battery_id);
 		return battery_id;
 	}
+
+#ifdef CONFIG_OEM_BMS
+	if (oem_bms_get_deterioration_status() >= DETERIORATION_STATUS_GOOD) {
+		node = of_find_node_by_name(chip->spmi->dev.of_node,
+						"qcom,det-battery-data");
+	} else {
+		node = of_find_node_by_name(chip->spmi->dev.of_node,
+						"qcom,battery-data");
+	}
+#else
 	node = of_find_node_by_name(chip->spmi->dev.of_node,
 					"qcom,battery-data");
+#endif
 	if (!node) {
 			pr_err("No available batterydata\n");
 			return -EINVAL;
@@ -3967,6 +4038,9 @@ static int qpnp_vm_bms_probe(struct spmi_device *spmi)
 					get_prop_bms_capacity(chip), vbatt,
 					chip->last_ocv_uv, chip->warm_reset);
 
+#ifdef CONFIG_OEM_BMS
+	oem_bms_init(interpolate_fcc(chip->batt_data->fcc_temp_lut, BMS_DEFAULT_TEMP));
+#endif
 	return rc;
 
 fail_get_vtg:
@@ -4227,6 +4301,13 @@ static void __exit qpnp_vm_bms_exit(void)
 	return spmi_driver_unregister(&qpnp_vm_bms_driver);
 }
 module_exit(qpnp_vm_bms_exit);
+
+int oem_chg_vadc_read(enum qpnp_vadc_channels channel,
+				struct qpnp_vadc_result *result)
+{
+	return qpnp_vadc_read(the_chip->vadc_dev, channel, result);
+}
+EXPORT_SYMBOL(oem_chg_vadc_read);
 
 MODULE_DESCRIPTION("QPNP VM-BMS Driver");
 MODULE_LICENSE("GPL v2");

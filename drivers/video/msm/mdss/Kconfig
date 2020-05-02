@@ -1,3 +1,6 @@
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2016 KYOCERA Corporation
+
 config FB_MSM_MDSS_WRITEBACK
 	bool "MDSS Writeback Panel"
 	---help---
@@ -43,3 +46,40 @@ config FB_MSM_MDSS_MDP3
 	---help---
 	The MDP3 provides support for an older version display controller
 	included in latest display sub-system, known as MDSS.
+
+config DISP_EXT_UTIL
+	bool "To enable the display utility"
+	default y
+	---help---
+	  Say Y here if you want to enable the utility of your display.
+config DISP_EXT_DIAG
+	bool "To enable the display diag function"
+	default y
+	---help---
+	  Say Y here if you want to enable the diag function of your display.
+config DISP_EXT_BOARD
+	bool "Enables the detection function of the display board"
+	default y
+	---help---
+	  Say Y here if you want to enable the detection function of your display.
+config DISP_EXT_PROPERTY
+	bool "To enable the display property function"
+	default y
+	---help---
+	  Say Y here if you want to enable the property function of your display.
+config DISP_EXT_PP
+	bool "Enables display color adjustment post processing"
+	default y
+	---help---
+	  Say Y here if you want to enable display color adjustment post processing.
+
+config DISP_EXT_SUB
+	bool "To enable the sub display"
+	default y
+	---help---
+	  Say Y here if you want to enable the sub display.
+config DISP_EXT_I2C
+	bool "To enable the i2c"
+	default y
+	---help---
+	  Say Y here if you want to enable the i2c.

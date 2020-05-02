@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2008-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -188,6 +192,8 @@ enum mdss_intf_events {
 	MDSS_EVENT_LINK_READY,
 	MDSS_EVENT_UNBLANK,
 	MDSS_EVENT_PANEL_ON,
+	MDSS_EVENT_PANEL_ON_POST,
+	MDSS_EVENT_PANEL_ON_POST2,
 	MDSS_EVENT_BLANK,
 	MDSS_EVENT_PANEL_OFF,
 	MDSS_EVENT_CLOSE,
@@ -625,6 +631,7 @@ struct mdss_panel_cfg *mdss_panel_intf_type(int intf_val);
  * returns true if bootloader configured, else false
  */
 int mdss_panel_get_boot_cfg(void);
+int mdp3_panel_get_boot_cfg(void);
 
 /**
  * mdss_is_ready() - checks if mdss is probed and ready

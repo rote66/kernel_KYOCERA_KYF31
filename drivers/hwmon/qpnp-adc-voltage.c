@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -174,6 +178,7 @@ static struct qpnp_vadc_scale_fn vadc_scale_fn[] = {
 	[SCALE_QRD_SKUC_BATT_THERM] = {qpnp_adc_scale_qrd_skuc_batt_therm},
 	[SCALE_QRD_SKUE_BATT_THERM] = {qpnp_adc_scale_qrd_skue_batt_therm},
 	[SCALE_QRD_SKUL_BATT_THERM] = {qpnp_adc_scale_qrd_skul_batt_therm},
+	[SCALE_THERM_OEM_NONPULL] = {oem_adc_scale_therm_nonpull},
 };
 
 static struct qpnp_vadc_rscale_fn adc_vadc_rscale_fn[] = {
@@ -2135,6 +2140,8 @@ hwmon_err_sens:
 	return rc;
 }
 
+extern char oem_chg_vadc_dev_name[128];
+
 static int qpnp_vadc_get_temp(struct thermal_zone_device *thermal,
 			     unsigned long *temp)
 {
@@ -2366,6 +2373,7 @@ static int qpnp_vadc_probe(struct spmi_device *spmi)
 
 	vadc->vadc_iadc_sync_lock = false;
 	dev_set_drvdata(&spmi->dev, vadc);
+	strncpy(oem_chg_vadc_dev_name, dev_name(&spmi->dev), 128);
 	list_add(&vadc->list, &qpnp_vadc_device_list);
 
 	return 0;

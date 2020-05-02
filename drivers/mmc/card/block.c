@@ -17,6 +17,11 @@
  * Author:  Andrew Christian
  *          28 May 2002
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+
 #include <linux/moduleparam.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -62,7 +67,7 @@ MODULE_ALIAS("mmc:block");
 #define INAND_CMD38_ARG_SECERASE 0x80
 #define INAND_CMD38_ARG_SECTRIM1 0x81
 #define INAND_CMD38_ARG_SECTRIM2 0x88
-#define MMC_BLK_TIMEOUT_MS  (30 * 1000)        /* 30 sec timeout */
+#define MMC_BLK_TIMEOUT_MS  (2 * 1000)        /* 2 sec timeout */
 
 #define mmc_req_rel_wr(req)	(((req->cmd_flags & REQ_FUA) || \
 				  (req->cmd_flags & REQ_META)) && \
@@ -1587,6 +1592,7 @@ static int mmc_blk_err_check(struct mmc_card *card,
 	if (!mmc_host_is_spi(card->host) && rq_data_dir(req) != READ) {
 		u32 status;
 		unsigned long timeout;
+		u32 stop_status;
 
 		/* Check stop command response */
 		if (brq->stop.resp[0] & R1_ERROR) {
@@ -1611,6 +1617,15 @@ static int mmc_blk_err_check(struct mmc_card *card,
 				       status);
 				gen_err = 1;
 			}
+			
+			if ((R1_CURRENT_STATE(status) == R1_STATE_RCV) &&
+				(status & R1_WP_VIOLATION)) {
+				pr_notice("%s: R1_WP_VIOLATION has occurred, eMMC current status (0x%x)\n",__func__, status);
+
+				err = send_stop(card, &stop_status);
+				if (err)
+					pr_err("%s: general error sending stop command\n",__func__);
+			}
 
 			/* Timeout if the device never becomes ready for data
 			 * and never leaves the program state.
@@ -1628,7 +1643,8 @@ static int mmc_blk_err_check(struct mmc_card *card,
 			 * indication and the card state.
 			 */
 		} while (!(status & R1_READY_FOR_DATA) ||
-			 (R1_CURRENT_STATE(status) == R1_STATE_PRG));
+			 (R1_CURRENT_STATE(status) == R1_STATE_PRG) ||
+			 ((R1_CURRENT_STATE(status) == R1_STATE_RCV) && (status & R1_WP_VIOLATION)));
 	}
 
 	/* if general error occurs, retry the write operation. */
@@ -3297,7 +3313,7 @@ static int mmc_blk_probe(struct mmc_card *card)
 
 	string_get_size((u64)get_capacity(md->disk) << 9, STRING_UNITS_2,
 			cap_str, sizeof(cap_str));
-	pr_info("%s: %s %s %s %s\n",
+	pr_notice("%s: %s %s %s %s\n",
 		md->disk->disk_name, mmc_card_id(card), mmc_card_name(card),
 		cap_str, md->read_only ? "(ro)" : "");
 

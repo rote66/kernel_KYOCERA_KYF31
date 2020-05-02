@@ -9,6 +9,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
 
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -16,6 +21,11 @@
 
 #define GET_CPU_OF_ATTR(attr) \
 	(container_of(attr, struct msm_pm_kobj_attribute, ka)->cpu)
+
+#define DIAG_PWROFF_MODE_CMD_ONLY         0x01
+#define DIAG_PWROFF_MODE_CMD_WITH_ENDSEQ  0x02
+#define DIAG_PWROFF_MODE_COMPLETE         0xFF
+static unsigned short pwroff_mode = 0;
 
 struct msm_pm_platform_data {
 	u8 idle_supported;   /* Allow device to enter mode during idle */
@@ -373,6 +383,47 @@ mode_sysfs_add_cpu_exit:
 	return ret;
 }
 
+bool msm_is_pwroff_mode(void){
+	if (pwroff_mode == DIAG_PWROFF_MODE_CMD_WITH_ENDSEQ){
+		return true;
+	}else{
+		return false;
+	}
+}
+
+void msm_set_pwroff_complete(void){
+	pwroff_mode = DIAG_PWROFF_MODE_COMPLETE;
+}
+
+static ssize_t msm_pwroff_mode_show(struct kobject *kobj,
+						struct kobj_attribute *attr, char *buf)
+{
+	printk(KERN_DEBUG "msm_pwroff_mode_show\n");
+	return sprintf(buf, "%hu\n", pwroff_mode);
+}
+
+static ssize_t msm_pwroff_mode_store(struct kobject *kobj,
+				struct kobj_attribute *attr, const char * buf, size_t n)
+{
+	unsigned short value = 0;
+
+	printk(KERN_DEBUG "msm_pwroff_mode_store\n");
+	if (sscanf(buf, "%hu", &value) != 1 ||
+		value > DIAG_PWROFF_MODE_CMD_WITH_ENDSEQ)
+	{
+		printk(KERN_ERR "Invalid value\n");
+		return -EINVAL;
+	}
+	printk(KERN_DEBUG "value=%d\n", value);
+	pwroff_mode = value;
+
+	return n;
+}
+
+static struct kobj_attribute pwroff_mode_attr =
+		__ATTR(pwroff_mode, 0644, msm_pwroff_mode_show, msm_pwroff_mode_store);
+
+
 int msm_pm_mode_sysfs_add(const char *pm_modname)
 {
 	struct kobject *module_kobj;
@@ -398,6 +449,13 @@ int msm_pm_mode_sysfs_add(const char *pm_modname)
 	for_each_possible_cpu(cpu) {
 		ret = msm_pm_mode_sysfs_add_cpu(cpu, modes_kobj);
 		if (ret)
+			goto mode_sysfs_add_exit;
+	}
+
+	ret = sysfs_create_file(module_kobj, &pwroff_mode_attr.attr);
+	if( ret < 0 ) {
+		pr_err("%s: cannot add sysfs entry for power off mode\n",
+				__func__);
 			goto mode_sysfs_add_exit;
 	}
 

@@ -1,3 +1,8 @@
+#
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2015 KYOCERA Corporation
+#
+
 menuconfig POWER_RESET
 	bool "Board level reset or power off"
 	help
@@ -52,3 +57,10 @@ config POWER_RESET_VEXPRESS
 	help
 	  Power off and reset support for the ARM Ltd. Versatile
 	  Express boards.
+
+config EX_RAMDUMP
+	bool "EX ramdump"
+	default n
+	help
+      Say Y here if you want to support the EX ramdump.
+      When in doubt, say "N".

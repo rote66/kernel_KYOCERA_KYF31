@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2007, 2013-2015, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
  *
@@ -1580,6 +1584,7 @@ int mdp3_ppp_parse_req(void __user *p,
 		return -EFAULT;
 	}
 
+	pr_debug("%s: req_idx=%d, count=%d, req=%p, async=%d\n",__func__,idx,count,req,async);
 	rc = mdp3_ppp_handle_buf_sync(req, &req_list_header->sync);
 	if (rc < 0) {
 		pr_err("%s: Failed create sync point\n", __func__);
@@ -1637,6 +1642,7 @@ int mdp3_ppp_parse_req(void __user *p,
 		sync_fence_put(fence);
 		fence = NULL;
 	}
+	pr_debug("%s: End ret=%d\n",__func__,rc);
 	return 0;
 
 parse_err_2:
@@ -1648,6 +1654,7 @@ parse_err_1:
 	}
 	mdp3_ppp_deinit_buf_sync(req);
 	mutex_unlock(&ppp_stat->req_mutex);
+	pr_debug("%s: End ret=%d\n",__func__,rc);
 	return rc;
 }
 

@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
 /* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -31,6 +35,13 @@
 #include <mach/msm_iomap.h>
 #include <mach/gpiomux.h>
 #include "gpio-msm-common.h"
+
+#ifdef KC_BATTERY_LOG_ENABLED
+#include <linux/clog.h>
+#define KCBLOG(tag, ...)  CLOG(tag, ##__VA_ARGS__)
+#else
+#define KCBLOG(tag, ...) do{} while(0)
+#endif
 
 #ifdef CONFIG_GPIO_MSM_V3
 enum msm_tlmm_register {
@@ -393,6 +404,7 @@ void msm_gpio_show_resume_irq(void)
 
 			pr_warning("%s: %d triggered %s\n",
 					__func__, irq, name);
+			KCBLOG("resume_irq","%d",irq);
 		}
 	}
 	spin_unlock_irqrestore(&tlmm_lock, irq_flags);

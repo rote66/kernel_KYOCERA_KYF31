@@ -5,6 +5,10 @@
  *
  * This file is released under the GPLv2.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2013 KYOCERA Corporation
+ */
 
 #include <linux/device.h>
 #include <linux/slab.h>
@@ -785,6 +789,7 @@ void pm_wakep_autosleep_enabled(bool set)
 	struct wakeup_source *ws;
 	ktime_t now = ktime_get();
 
+	pr_info("checkpoint: %s(%d)", __func__, set);
 	rcu_read_lock();
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
 		spin_lock_irq(&ws->lock);

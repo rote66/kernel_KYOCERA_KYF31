@@ -7,6 +7,10 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
 
 #include <linux/err.h>
 #include <linux/gpio.h>
@@ -63,7 +67,7 @@ static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 		goto out;
 
 	if (status ^ ctx->status) {
-		pr_info("%s: slot status change detected (%d -> %d), GPIO_ACTIVE_%s\n",
+		pr_notice("%s: slot status change detected (%d -> %d), GPIO_ACTIVE_%s\n",
 				mmc_hostname(host), ctx->status, status,
 				(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH) ?
 				"HIGH" : "LOW");

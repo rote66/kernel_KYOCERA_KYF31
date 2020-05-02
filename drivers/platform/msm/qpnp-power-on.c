@@ -9,6 +9,13 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/module.h>
 #include <linux/init.h>
@@ -24,6 +31,10 @@
 #include <linux/input.h>
 #include <linux/log2.h>
 #include <linux/qpnp/power-on.h>
+#include <linux/wakelock.h>
+#include <soc/qcom/oem_fact.h>
+#include <soc/qcom/smem.h>
+#include <linux/key_dm_driver.h>
 
 #define CREATE_MASK(NUM_BITS, POS) \
 	((unsigned char) (((1 << (NUM_BITS)) - 1) << (POS)))
@@ -120,6 +131,14 @@
 #define QPNP_PON_MAX_DBC_US			(USEC_PER_SEC * 2)
 
 #define QPNP_KEY_STATUS_DELAY			msecs_to_jiffies(250)
+
+#ifdef PWRKEY_DEBUG
+#define PWRKEY_DBG_PRINT(fmt, ...) printk(KERN_ERR fmt, ##__VA_ARGS__)
+#else 
+#define PWRKEY_DBG_PRINT(fmt, ...) printk(KERN_DEBUG fmt, ##__VA_ARGS__)
+#endif
+
+static bool g_kdm_pwrkey_check = false;
 
 #define QPNP_PON_BUFFER_SIZE			9
 
@@ -549,6 +568,23 @@ qpnp_get_cfg(struct qpnp_pon *pon, u32 pon_type)
 	return NULL;
 }
 
+/*======The debug function for development======*/
+#include <linux/rtc.h>
+static void key_debug_marker(char *annotation, u32 key_status)
+{
+	struct timespec ts;
+	struct rtc_time tm;
+
+	getnstimeofday(&ts);
+	rtc_time_to_tm(ts.tv_sec, &tm);
+	pr_err("%s %d %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n",
+		annotation, key_status, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
+}
+/*==============================================*/
+
+struct wake_lock qpnp_pon_wake_lock;
+
 static int
 qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 {
@@ -594,6 +630,15 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 					cfg->key_code, pon_rt_sts);
 	key_status = pon_rt_sts & pon_rt_bit;
 
+    key_debug_marker("pwrkey input report", pon_rt_sts & pon_rt_bit);
+    wake_lock_timeout(&qpnp_pon_wake_lock,HZ);
+
+	if (g_kdm_pwrkey_check) {
+		if(key_status){
+            key_set_code(cfg->key_code);
+        }
+	} else {
+
 	/* simulate press event in case release event occured
 	 * without a press event
 	 */
@@ -604,6 +649,12 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 
 	input_report_key(pon->pon_input, cfg->key_code, key_status);
 	input_sync(pon->pon_input);
+    }
+
+	if (pon_rt_sts & pon_rt_bit)
+		pr_info("checkpoint: %s: PwKey Pressed\n", __func__);
+	else
+		pr_info("checkpoint: %s: PwKey Released\n", __func__);
 
 	cfg->old_state = !!key_status;
 
@@ -787,6 +838,30 @@ static irqreturn_t qpnp_resin_bark_irq(int irq, void *_pon)
 err_exit:
 	return IRQ_HANDLED;
 }
+
+unsigned char pwrkey_cmd(unsigned char cmd, int *val)
+{
+	uint8_t ret = 1;
+
+	PWRKEY_DBG_PRINT("%s: cmd:%d\n", __func__, cmd);
+	switch (cmd) {
+	case KEY_DM_CHECK_COMMAND:
+		PWRKEY_DBG_PRINT("%s: %x %x\n", __func__, g_kdm_pwrkey_check, val[0]);
+		if (val[0]) {
+			g_kdm_pwrkey_check = true;
+		} else {
+			g_kdm_pwrkey_check = false;
+		}
+		ret = 0;
+		break;
+
+	default:
+		printk(KERN_ERR "%s: %d\n", __func__, cmd);
+		break;
+	}
+	return ret;
+}
+EXPORT_SYMBOL(pwrkey_cmd);
 
 static int
 qpnp_config_pull(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
@@ -1056,6 +1131,10 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 				return rc;
 			}
 
+			if (oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_02, 7)) {
+				cfg->support_reset = false;
+			}
+
 			cfg->use_bark = of_property_read_bool(pp,
 							"qcom,use-bark");
 			if (cfg->use_bark) {
@@ -1171,6 +1250,10 @@ static int qpnp_pon_config_init(struct qpnp_pon *pon)
 				dev_err(&pon->spmi->dev,
 					"Unable to read 'support-reset'\n");
 				return rc;
+			}
+
+			if (oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_02, 7)) {
+				cfg->support_reset = true;
 			}
 
 			cfg->use_bark = of_property_read_bool(pp,
@@ -1485,6 +1568,8 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 	const char *s3_src;
 	u8 s3_src_reg;
 
+	wake_lock_init(&qpnp_pon_wake_lock,WAKE_LOCK_SUSPEND,"qpnp_pon_wake_lock");
+
 	pon = devm_kzalloc(&spmi->dev, sizeof(struct qpnp_pon),
 							GFP_KERNEL);
 	if (!pon) {
@@ -1540,6 +1625,11 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 	}
 
 	boot_reason = ffs(pon_sts);
+
+	/* boot_reason */
+	boot_reason = *(unsigned int *)
+		(kc_smem_alloc(SMEM_KC_POWER_ON_STATUS_INFO, 8));
+	printk(KERN_NOTICE "Boot Reason = 0x%08x\n", boot_reason);
 
 	index = ffs(pon_sts) - 1;
 	cold_boot = !qpnp_pon_is_warm_reset();
@@ -1628,6 +1718,10 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 		return rc;
 	}
 
+	if (oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_02, 7)) {
+		s3_src = "kpdpwr-and-resin";
+	}
+
 	if (!strcmp(s3_src, "kpdpwr"))
 		s3_src_reg = QPNP_PON_S3_SRC_KPDPWR;
 	else if (!strcmp(s3_src, "resin"))
@@ -1695,6 +1789,8 @@ static int qpnp_pon_remove(struct spmi_device *spmi)
 	device_remove_file(&spmi->dev, &dev_attr_debounce_us);
 
 	cancel_delayed_work_sync(&pon->bark_work);
+
+    wake_lock_destroy(&qpnp_pon_wake_lock);
 
 	if (pon->pon_input)
 		input_unregister_device(pon->pon_input);

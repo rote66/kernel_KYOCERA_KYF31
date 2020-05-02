@@ -14,6 +14,10 @@
  * GNU General Public License for more details.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/module.h>
 #include <linux/mmc/host.h>
@@ -3336,13 +3340,14 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps2 |= MMC_CAP2_PACKED_WR_CONTROL;
 	msm_host->mmc->caps2 |= (MMC_CAP2_BOOTPART_NOACC |
 				MMC_CAP2_DETECT_ON_ERR);
-	msm_host->mmc->caps2 |= MMC_CAP2_CACHE_CTRL;
+//	msm_host->mmc->caps2 |= MMC_CAP2_CACHE_CTRL;
 	msm_host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY;
 	msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
 	msm_host->mmc->caps2 |= MMC_CAP2_STOP_REQUEST;
 	msm_host->mmc->caps2 |= MMC_CAP2_ASYNC_SDIO_IRQ_4BIT_MODE;
 	msm_host->mmc->pm_caps |= MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
 	msm_host->mmc->caps2 |= MMC_CAP2_CORE_PM;
+	msm_host->mmc->caps2 |= MMC_CAP2_AWAKE_SUPP;
 
 	if (msm_host->pdata->nonremovable)
 		msm_host->mmc->caps |= MMC_CAP_NONREMOVABLE;

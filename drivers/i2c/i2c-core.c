@@ -24,6 +24,14 @@
    Jean Delvare <khali@linux-fr.org>
    Mux support by Rodolfo Giometti <giometti@enneenne.com> and
    Michael Lawnick <michael.lawnick.ext@nsn.com> */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -46,6 +54,27 @@
 
 #include "i2c-core.h"
 
+#include <linux/gpio.h>
+#include <linux/wakelock.h>
+
+#define GPIO_I2C_PRIM_SDA       6
+#define GPIO_I2C_PRIM_SCL       7
+#define GPIO_I2C_CAM_SDA       29
+#define GPIO_I2C_CAM_SCL       30
+#define GPIO_I2C_SMB_SDA       14
+#define GPIO_I2C_SMB_SCL       15
+#define GPIO_I2C_TP_SDA        18
+#define GPIO_I2C_TP_SCL        19
+#define GPIO_NUM_OFFSET       911
+
+#define GPIO_S7708A_I2C_SDA     GPIO_I2C_PRIM_SDA
+#define GPIO_S7708A_I2C_SCL     GPIO_I2C_PRIM_SCL
+
+
+#define MSM_8909_BLSP1_QUP1_I2C_BUS_ID   1
+#define MSM_8909_BLSP1_QUP3_I2C_BUS_ID   3
+#define MSM_8909_BLSP1_QUP4_I2C_BUS_ID   4
+#define MSM_8909_BLSP1_QUP5_I2C_BUS_ID   5
 
 /* core_lock protects i2c_adapter_idr, and guarantees
    that device detection, deletion of detected devices, and attach_adapter
@@ -55,6 +84,8 @@ static DEFINE_IDR(i2c_adapter_idr);
 
 static struct device_type i2c_client_type;
 static int i2c_detect(struct i2c_adapter *adapter, struct i2c_driver *driver);
+
+struct wake_lock i2c_wake_lock;
 
 /* ------------------------------------------------------------------------- */
 
@@ -917,6 +948,89 @@ struct device_type i2c_adapter_type = {
 };
 EXPORT_SYMBOL_GPL(i2c_adapter_type);
 
+void i2c_reset_S7780A(struct i2c_adapter *adap)
+{
+	struct i2c_msg msg;
+	char buf[1];
+
+	buf[0]    = 0xFF;
+	msg.addr  = 0x007F;
+	msg.flags = (I2C_M_TEN | I2C_M_RD);
+	msg.len   = 1;
+	msg.buf   = buf;
+
+	if (adap->algo->master_xfer) {
+		dev_notice(&adap->dev, "%s\n", __func__);
+		(void)adap->algo->master_xfer(adap, &msg, 1);
+		(void)adap->algo->master_xfer(adap, &msg, 1);
+		(void)adap->algo->master_xfer(adap, &msg, 1);
+	} else {
+		dev_err(&adap->dev, "%s : I2C level transfers not supported\n", __func__);
+	}
+}
+
+void i2c_reset_device(struct i2c_adapter *adap, bool init_flg)
+{
+	int scl;
+	int sda;
+
+	switch (adap->nr) {
+	case MSM_8909_BLSP1_QUP1_I2C_BUS_ID:
+		scl = GPIO_I2C_PRIM_SCL;
+		sda = GPIO_I2C_PRIM_SDA;
+		break;
+	case MSM_8909_BLSP1_QUP3_I2C_BUS_ID:
+		scl = GPIO_I2C_CAM_SCL;
+		sda = GPIO_I2C_CAM_SDA;
+		break;
+	case MSM_8909_BLSP1_QUP4_I2C_BUS_ID:
+		scl = GPIO_I2C_SMB_SCL;
+		sda = GPIO_I2C_SMB_SDA;
+		break;
+	case MSM_8909_BLSP1_QUP5_I2C_BUS_ID:
+		scl = GPIO_I2C_TP_SCL;
+		sda = GPIO_I2C_TP_SDA;
+		break;
+	default:
+		dev_err(&adap->dev, "%s : unknown BusID = %d\n", __func__, adap->nr);
+		return;
+	}
+
+	dev_err(&adap->dev, "%s : [SCL] gpio No=%d, [SDA] gpioNo=%d\n", __func__, scl, sda);
+
+	if((scl == GPIO_S7708A_I2C_SCL) &&
+	   (sda == GPIO_S7708A_I2C_SDA)) {
+		i2c_reset_S7780A(adap);
+	}
+	
+	adap->algo->compulsory_reset(adap, init_flg);
+}
+
+int i2c_pinctrl_set_default(struct i2c_adapter *adap)
+{
+	return adap->algo->pinctrl_set_default(adap);
+}
+
+int i2c_pinctrl_set_active(struct i2c_adapter *adap)
+{
+	return adap->algo->pinctrl_set_active(adap);
+}
+
+int i2c_pinctrl_set_sleep(struct i2c_adapter *adap)
+{
+	return adap->algo->pinctrl_set_sleep(adap);
+}
+
+int i2c_clk_prepare_enable(struct i2c_adapter *adap)
+{
+	return adap->algo->clk_vote_prepare_enable(adap);
+}
+
+void i2c_clk_disable_unprepare(struct i2c_adapter *adap)
+{
+	adap->algo->clk_unvote_disable_unprepare(adap);
+}
+
 /**
  * i2c_verify_adapter - return parameter as i2c_adapter or NULL
  * @dev: device, probably from some driver model iterator
@@ -1430,6 +1544,8 @@ static int __init i2c_init(void)
 {
 	int retval;
 
+	wake_lock_init(&i2c_wake_lock,WAKE_LOCK_SUSPEND,"i2c_wake_lock");
+
 	retval = bus_register(&i2c_bus_type);
 	if (retval)
 		return retval;
@@ -1495,6 +1611,12 @@ int __i2c_transfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 	orig_jiffies = jiffies;
 	for (ret = 0, try = 0; try <= adap->retries; try++) {
 		ret = adap->algo->master_xfer(adap, msgs, num);
+		if (ret < 0){
+			dev_err(&adap->dev, "%s : i2c_reset_device BusID = %d\n", __func__, adap->nr);
+			wake_lock(&i2c_wake_lock);
+			i2c_reset_device(adap, false);
+			wake_unlock(&i2c_wake_lock);
+		}
 		if (ret != -EAGAIN)
 			break;
 		if (time_after(jiffies, orig_jiffies + adap->timeout))

@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
@@ -12,6 +17,7 @@
 #include <linux/of_gpio.h>
 #include <linux/idr.h>
 #include <linux/slab.h>
+#include <linux/kc_board.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/gpio.h>
@@ -721,9 +727,16 @@ done:
 	return status ? : len;
 }
 
+static ssize_t hwid_show(struct class *class,
+                         struct class_attribute *attr,char *buf)
+{
+       return sprintf(buf, "%d\n", OEM_get_board());
+}
+
 static struct class_attribute gpio_class_attrs[] = {
 	__ATTR(export, 0200, NULL, export_store),
 	__ATTR(unexport, 0200, NULL, unexport_store),
+	__ATTR_RO(hwid),
 	__ATTR_NULL,
 };
 

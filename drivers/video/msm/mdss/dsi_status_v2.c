@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -18,6 +22,7 @@
 
 #include "mdss_dsi.h"
 #include "mdp3_ctrl.h"
+#include "disp_ext.h"
 
 /*
  * mdp3_check_dsi_ctrl_status() - Check MDP3 DSI controller status periodically.
@@ -36,6 +41,8 @@ void mdp3_check_dsi_ctrl_status(struct work_struct *work,
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct mdp3_session_data *mdp3_session = NULL;
 	int ret = 0;
+
+	pr_debug("%s: Start\n",__func__);
 
 	pdsi_status = container_of(to_delayed_work(work),
 	struct dsi_status_data, check_status);
@@ -80,6 +87,14 @@ void mdp3_check_dsi_ctrl_status(struct work_struct *work,
 		return;
 	}
 
+#ifdef CONFIG_DISP_EXT_BOARD
+	if (disp_ext_board_get_panel_detect() != 1) {
+		pr_err("%s: Panel not connected\n", __func__);
+		mutex_unlock(&mdp3_session->lock);
+		return;
+	}
+#endif /* CONFIG_DISP_EXT_BOARD */
+
 	if (mdp3_session->wait_for_dma_done)
 		ret = mdp3_session->wait_for_dma_done(mdp3_session);
 
@@ -88,6 +103,7 @@ void mdp3_check_dsi_ctrl_status(struct work_struct *work,
 	else
 		pr_err("%s: wait_for_dma_done error\n", __func__);
 	mutex_unlock(&mdp3_session->lock);
+	ctrl_pdata->refresh_check_count++;
 
 	if (mdss_fb_is_power_on_interactive(pdsi_status->mfd)) {
 		if (ret > 0) {
@@ -101,7 +117,9 @@ void mdp3_check_dsi_ctrl_status(struct work_struct *work,
 					KOBJ_CHANGE, envp);
 			pr_err("%s: Panel has gone bad, sending uevent - %s\n",
 							__func__, envp[0]);
+			ctrl_pdata->refresh_check_error++;
 		}
 	}
+	pr_debug("%s: End ret=%d\n",__func__,ret);
 }
 

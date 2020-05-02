@@ -12,6 +12,10 @@
  *
  *     - JMicron (hardware and technical support)
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/delay.h>
 #include <linux/highmem.h>
@@ -99,7 +103,7 @@ static void sdhci_dump_state(struct sdhci_host *host)
 {
 	struct mmc_host *mmc = host->mmc;
 
-	pr_info("%s: clk: %d clk-gated: %d claimer: %s pwr: %d\n",
+	pr_notice("%s: clk: %d clk-gated: %d claimer: %s pwr: %d\n",
 		mmc_hostname(mmc), host->clock, mmc->clk_gated,
 		mmc->claimer->comm, host->pwr);
 	sdhci_dump_rpm_info(host);
@@ -107,59 +111,59 @@ static void sdhci_dump_state(struct sdhci_host *host)
 
 static void sdhci_dumpregs(struct sdhci_host *host)
 {
-	pr_info(DRIVER_NAME ": =========== REGISTER DUMP (%s)===========\n",
+	pr_notice(DRIVER_NAME ": =========== REGISTER DUMP (%s)===========\n",
 		mmc_hostname(host->mmc));
 
-	pr_info(DRIVER_NAME ": Sys addr: 0x%08x | Version:  0x%08x\n",
+	pr_notice(DRIVER_NAME ": Sys addr: 0x%08x | Version:  0x%08x\n",
 		sdhci_readl(host, SDHCI_DMA_ADDRESS),
 		sdhci_readw(host, SDHCI_HOST_VERSION));
-	pr_info(DRIVER_NAME ": Blk size: 0x%08x | Blk cnt:  0x%08x\n",
+	pr_notice(DRIVER_NAME ": Blk size: 0x%08x | Blk cnt:  0x%08x\n",
 		sdhci_readw(host, SDHCI_BLOCK_SIZE),
 		sdhci_readw(host, SDHCI_BLOCK_COUNT));
-	pr_info(DRIVER_NAME ": Argument: 0x%08x | Trn mode: 0x%08x\n",
+	pr_notice(DRIVER_NAME ": Argument: 0x%08x | Trn mode: 0x%08x\n",
 		sdhci_readl(host, SDHCI_ARGUMENT),
 		sdhci_readw(host, SDHCI_TRANSFER_MODE));
-	pr_info(DRIVER_NAME ": Present:  0x%08x | Host ctl: 0x%08x\n",
+	pr_notice(DRIVER_NAME ": Present:  0x%08x | Host ctl: 0x%08x\n",
 		sdhci_readl(host, SDHCI_PRESENT_STATE),
 		sdhci_readb(host, SDHCI_HOST_CONTROL));
-	pr_info(DRIVER_NAME ": Power:    0x%08x | Blk gap:  0x%08x\n",
+	pr_notice(DRIVER_NAME ": Power:    0x%08x | Blk gap:  0x%08x\n",
 		sdhci_readb(host, SDHCI_POWER_CONTROL),
 		sdhci_readb(host, SDHCI_BLOCK_GAP_CONTROL));
-	pr_info(DRIVER_NAME ": Wake-up:  0x%08x | Clock:    0x%08x\n",
+	pr_notice(DRIVER_NAME ": Wake-up:  0x%08x | Clock:    0x%08x\n",
 		sdhci_readb(host, SDHCI_WAKE_UP_CONTROL),
 		sdhci_readw(host, SDHCI_CLOCK_CONTROL));
-	pr_info(DRIVER_NAME ": Timeout:  0x%08x | Int stat: 0x%08x\n",
+	pr_notice(DRIVER_NAME ": Timeout:  0x%08x | Int stat: 0x%08x\n",
 		sdhci_readb(host, SDHCI_TIMEOUT_CONTROL),
 		sdhci_readl(host, SDHCI_INT_STATUS));
-	pr_info(DRIVER_NAME ": Int enab: 0x%08x | Sig enab: 0x%08x\n",
+	pr_notice(DRIVER_NAME ": Int enab: 0x%08x | Sig enab: 0x%08x\n",
 		sdhci_readl(host, SDHCI_INT_ENABLE),
 		sdhci_readl(host, SDHCI_SIGNAL_ENABLE));
-	pr_info(DRIVER_NAME ": AC12 err: 0x%08x | Slot int: 0x%08x\n",
+	pr_notice(DRIVER_NAME ": AC12 err: 0x%08x | Slot int: 0x%08x\n",
 		host->auto_cmd_err_sts,
 		sdhci_readw(host, SDHCI_SLOT_INT_STATUS));
-	pr_info(DRIVER_NAME ": Caps:     0x%08x | Caps_1:   0x%08x\n",
+	pr_notice(DRIVER_NAME ": Caps:     0x%08x | Caps_1:   0x%08x\n",
 		sdhci_readl(host, SDHCI_CAPABILITIES),
 		sdhci_readl(host, SDHCI_CAPABILITIES_1));
-	pr_info(DRIVER_NAME ": Cmd:      0x%08x | Max curr: 0x%08x\n",
+	pr_notice(DRIVER_NAME ": Cmd:      0x%08x | Max curr: 0x%08x\n",
 		sdhci_readw(host, SDHCI_COMMAND),
 		sdhci_readl(host, SDHCI_MAX_CURRENT));
-	pr_info(DRIVER_NAME ": Resp 1:   0x%08x | Resp 0:   0x%08x\n",
+	pr_notice(DRIVER_NAME ": Resp 1:   0x%08x | Resp 0:   0x%08x\n",
 		sdhci_readl(host, SDHCI_RESPONSE + 0x4),
 		sdhci_readl(host, SDHCI_RESPONSE));
-	pr_info(DRIVER_NAME ": Resp 3:   0x%08x | Resp 2:   0x%08x\n",
+	pr_notice(DRIVER_NAME ": Resp 3:   0x%08x | Resp 2:   0x%08x\n",
 		sdhci_readl(host, SDHCI_RESPONSE + 0xC),
 		sdhci_readl(host, SDHCI_RESPONSE + 0x8));
-	pr_info(DRIVER_NAME ": Host ctl2: 0x%08x\n",
+	pr_notice(DRIVER_NAME ": Host ctl2: 0x%08x\n",
 		sdhci_readw(host, SDHCI_HOST_CONTROL2));
 
 	if (host->flags & SDHCI_USE_ADMA_64BIT) {
-		pr_info(DRIVER_NAME ": ADMA Err: 0x%08x\n",
+		pr_notice(DRIVER_NAME ": ADMA Err: 0x%08x\n",
 		       readl(host->ioaddr + SDHCI_ADMA_ERROR));
-		pr_info(DRIVER_NAME ": ADMA Addr(0:31): 0x%08x | ADMA Addr(32:63): 0x%08x\n",
+		pr_notice(DRIVER_NAME ": ADMA Addr(0:31): 0x%08x | ADMA Addr(32:63): 0x%08x\n",
 		       readl(host->ioaddr + SDHCI_ADMA_ADDRESS_LOW),
 		       readl(host->ioaddr + SDHCI_ADMA_ADDRESS_HIGH));
 	} else if (host->flags & SDHCI_USE_ADMA) {
-		pr_info(DRIVER_NAME ": ADMA Err: 0x%08x | ADMA Ptr: 0x%08x\n",
+		pr_notice(DRIVER_NAME ": ADMA Err: 0x%08x | ADMA Ptr: 0x%08x\n",
 		       readl(host->ioaddr + SDHCI_ADMA_ERROR),
 		       readl(host->ioaddr + SDHCI_ADMA_ADDRESS_LOW));
 	}
@@ -167,7 +171,7 @@ static void sdhci_dumpregs(struct sdhci_host *host)
 	if (host->ops->dump_vendor_regs)
 		host->ops->dump_vendor_regs(host);
 	sdhci_dump_state(host);
-	pr_info(DRIVER_NAME ": ===========================================\n");
+	pr_notice(DRIVER_NAME ": ===========================================\n");
 }
 
 #define MAX_PM_QOS_TIMEOUT_VALUE	100000 /* 100 ms */
@@ -1219,6 +1223,14 @@ static void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 		host->data_start_time = ktime_get();
 	trace_mmc_cmd_rw_start(cmd->opcode, cmd->arg, cmd->flags);
 	sdhci_writew(host, SDHCI_MAKE_CMD(cmd->opcode, flags), SDHCI_COMMAND);
+
+	if ( ( host->mmc->index == 0 && SDC_SDCARD_LOG(SDC_SDCARD_LOG_EMMC) ) ||
+	     ( host->mmc->index == 0 && cmd->opcode == MMC_GO_IDLE_STATE ) ||
+	     ( host->mmc->index == 1 && SDC_SDCARD_LOG(SDC_SDCARD_LOG_SD) ) ) 
+	{
+	    printk(KERN_NOTICE "%s: CMD%d: arg = %08x clk:%d\n", mmc_hostname(host->mmc), cmd->opcode, cmd->arg, host->clock);
+	}
+
 }
 
 static void sdhci_finish_command(struct sdhci_host *host)
@@ -1237,9 +1249,19 @@ static void sdhci_finish_command(struct sdhci_host *host)
 					host->cmd->resp[i] |=
 						sdhci_readb(host,
 						SDHCI_RESPONSE + (3-i)*4-1);
+				if ( ( host->mmc->index == 0 && SDC_SDCARD_LOG(SDC_SDCARD_LOG_EMMC) ) ||
+					 ( host->mmc->index == 1 && SDC_SDCARD_LOG(SDC_SDCARD_LOG_SD) ) )
+				{
+					printk(KERN_NOTICE "%s: resp[%d]=%08X\n", mmc_hostname(host->mmc), i, (u32)host->cmd->resp[i]);
+				}
 			}
 		} else {
 			host->cmd->resp[0] = sdhci_readl(host, SDHCI_RESPONSE);
+			if ( ( host->mmc->index == 0 && SDC_SDCARD_LOG(SDC_SDCARD_LOG_EMMC) ) ||
+				 ( host->mmc->index == 1 && SDC_SDCARD_LOG(SDC_SDCARD_LOG_SD) ) )
+			{
+				printk(KERN_NOTICE "%s: resp[0]=%08X\n", mmc_hostname(host->mmc), (u32)host->cmd->resp[0]);
+			}
 		}
 	}
 
@@ -2804,6 +2826,7 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
 		auto_cmd_status = host->auto_cmd_err_sts;
 		pr_err("%s: %s: AUTO CMD err sts 0x%08x\n",
 			mmc_hostname(host->mmc), __func__, auto_cmd_status);
+		sdhci_dumpregs(host);
 		if (auto_cmd_status & (SDHCI_AUTO_CMD12_NOT_EXEC |
 				       SDHCI_AUTO_CMD_INDEX_ERR |
 				       SDHCI_AUTO_CMD_ENDBIT_ERR))

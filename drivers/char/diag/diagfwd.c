@@ -9,6 +9,15 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2011 KYOCERA Corporation
+ * (C) 2012 KYOCERA Corporation
+ * (C) 2013 KYOCERA Corporation
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ */
+
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -701,6 +710,65 @@ fail_return:
 	    driver->logging_mode == MEMORY_DEVICE_MODE)
 		diag_ws_release();
 	return;
+}
+
+enum {
+	END_SEQ_STATE_SUCCESS,     /* Normal */
+	END_SEQ_STATE_ERR_INIT,    /* Init */
+	END_SEQ_STATE_ERR_DOG,     /* Dog kicked */
+	END_SEQ_STATE_ERR_INVALID  /* Internal data invalid */
+};
+
+static uint32_t diag_end_seq_type_val = END_SEQ_STATE_SUCCESS;
+
+void diag_end_sequence_output(void)
+{
+	int    err  = 0;
+	int    size = 0;
+	char*  buf  = NULL;
+	struct diag_request* write_ptr = NULL;
+
+	const static char  end_code_success[]     = {0x70,0x6f,0x77,0x65,0x72,0x6f,0x66,0x66,0x40,0xf3,0x7e,0x00};
+	const static char  end_code_err_init[]    = {0x65,0x72,0x72,0x6f,0x72,0x5f,0x69,0x6e,0x69,0x74,0xa8,0x69,0x7e,0x00};
+	const static char  end_code_err_dog[]     = {0x65,0x72,0x72,0x6f,0x72,0x5f,0x64,0x6f,0x67,0xe0,0x3e,0x7e,0x00};
+	const static char  end_code_err_invalid[] = {0x65,0x72,0x72,0x6f,0x72,0x5f,0x69,0x6e,0x76,0x61,0x6c,0x69,0x64,0x5f,0xf9,0x7e,0x00};
+
+	const static char* end_code[END_SEQ_STATE_ERR_INVALID + 1] =
+							{
+								end_code_success,
+								end_code_err_init,
+								end_code_err_dog,
+								end_code_err_invalid
+							};
+	struct diag_usb_info *usb_info = NULL;
+	usb_info = &diag_usb[0];
+
+	/* Prepare output buffer */
+	buf  = (char*)end_code[diag_end_seq_type_val];
+	size = strlen(buf);
+
+	/* Send data through usb diag */
+	write_ptr = (struct diag_request *)diagmem_alloc(driver,
+			        sizeof(struct diag_request),usb_info->mempool);
+	if (write_ptr) {
+		write_ptr->length = size;
+		write_ptr->buf    = buf;
+
+		/* Debug */
+		printk(KERN_INFO "Writing data to USB - pkt length: %d\n",
+				write_ptr->length);
+		print_hex_dump(KERN_DEBUG, "Written Packet Data to USB: ",
+				16, 1, DUMP_PREFIX_ADDRESS, buf, write_ptr->length, 1);
+
+                err = usb_diag_write(usb_info->hdl, write_ptr);
+	}
+	else {
+		err = -1;
+	}
+
+	if (err < 0) {
+		printk(KERN_ERR "Sending end sequence failed: %d", err);
+	}
 }
 
 void diag_read_smd_work_fn(struct work_struct *work)

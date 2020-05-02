@@ -16,6 +16,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #define pr_fmt(fmt) "logger: " fmt
 
@@ -29,13 +34,38 @@
 #include <linux/time.h>
 #include <linux/vmalloc.h>
 #include <linux/aio.h>
+#include <linux/kcjlog.h>
+#include "resetlog.h"
 #include "logger.h"
+#ifdef KC_LOG_CNFD_ENABLED
+#include <linux/kthread.h>
+#include <linux/clog.h>
+#include <linux/hardirq.h>
+#endif
 
 #include <asm/ioctls.h>
 
 #ifndef CONFIG_LOGCAT_SIZE
 #define CONFIG_LOGCAT_SIZE 256
 #endif
+
+#ifdef KC_LOG_CNFD_ENABLED
+#define SIZE_LOGCAT_CNFD      (256 * 1024)
+static unsigned char          cnfd_log_buffer[SIZE_LOGCAT_CNFD];
+static logger_log_info        cnfd_log_info;
+static int                    cnfd_log_enabled = 0;
+struct logger_log *           cnfd_logger_log = NULL;
+#define LOGGER_LOG_CNFD       "log_cnfd"
+#define ADDR_LOGCAT_CNFD      cnfd_log_buffer
+#define ADDR_LOGGER_INFO_CNFD (unsigned char*)&cnfd_log_info
+
+#define RESETLOG_SETTINGS_INDEX_CLOG    (4)
+#define CLOG_VALUE_ENABLED_MASK         (0x00000001)
+#define CLOG_VALUE_DISABLED             (0x00000000)
+#define CLOG_VALUE_ENABLED              (0x00000001)
+
+void flush_records(void *log);
+#endif /* KC_LOG_CNFD_ENABLED */
 
 /**
  * struct logger_log - represents a specific log, such as 'main' or 'radio'
@@ -63,6 +93,7 @@ struct logger_log {
 	size_t			head;
 	size_t			size;
 	struct list_head	logs;
+	logger_log_info  *log_info;
 };
 
 static LIST_HEAD(log_list);
@@ -406,7 +437,10 @@ static void fix_up_readers(struct logger_log *log, size_t len)
 	struct logger_reader *reader;
 
 	if (is_between(old, new, log->head))
+	{
 		log->head = get_next_entry(log, log->head, len);
+		log->log_info->head = log->head;
+	}
 
 	list_for_each_entry(reader, &log->readers, list)
 		if (is_between(old, new, reader->r_off))
@@ -429,7 +463,7 @@ static void do_write_log(struct logger_log *log, const void *buf, size_t count)
 		memcpy(log->buffer, buf + len, count - len);
 
 	log->w_off = logger_offset(log, log->w_off + count);
-
+	log->log_info->w_off = log->w_off;
 }
 
 /*
@@ -460,6 +494,7 @@ static ssize_t do_write_log_from_user(struct logger_log *log,
 			return -EFAULT;
 
 	log->w_off = logger_offset(log, log->w_off + count);
+	log->log_info->w_off = log->w_off;
 
 	return count;
 }
@@ -494,6 +529,9 @@ static ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 
 	mutex_lock(&log->mutex);
 
+#ifdef KC_LOG_CNFD_ENABLED
+	flush_records((void *)log);
+#endif
 	orig = log->w_off;
 
 	/*
@@ -517,6 +555,7 @@ static ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		nr = do_write_log_from_user(log, iov->iov_base, len);
 		if (unlikely(nr < 0)) {
 			log->w_off = orig;
+			log->log_info->w_off = log->w_off;
 			mutex_unlock(&log->mutex);
 			return nr;
 		}
@@ -710,6 +749,7 @@ static long logger_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		list_for_each_entry(reader, &log->readers, list)
 			reader->r_off = log->w_off;
 		log->head = log->w_off;
+		log->log_info->head = log->head;
 		ret = 0;
 		break;
 	case LOGGER_GET_VERSION:
@@ -735,6 +775,266 @@ static long logger_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+#ifdef KC_LOG_CNFD_ENABLED
+
+struct logger_record {
+	struct list_head    list;
+	struct logger_entry header;
+	int                 bufID;
+	struct kvec         iov[1];
+	int                 iov_buf_size;
+	unsigned long       nr_segs;
+};
+
+static LIST_HEAD(record_list);
+static DEFINE_SPINLOCK(record_lock);
+static DECLARE_WAIT_QUEUE_HEAD(record_wait);
+
+
+static void queue_record(struct logger_record *record)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&record_lock, flags);
+	list_add_tail(&record->list, &record_list);
+	spin_unlock_irqrestore(&record_lock, flags);
+
+	wake_up_interruptible(&record_wait);
+}
+
+static int dequeue_record(struct logger_record **record)
+{
+	unsigned long flags;
+
+	if (list_empty(&record_list))
+		return -ENOENT;
+
+	spin_lock_irqsave(&record_lock, flags);
+	*record = list_first_entry(&record_list, struct logger_record, list);
+	list_del(&(*record)->list);
+	spin_unlock_irqrestore(&record_lock, flags);
+
+	return 1;
+}
+
+#define	LOG_BUF_SIZE	1024
+static int alloc_record(struct logger_record **record)
+{
+	gfp_t flags = (in_atomic() || irqs_disabled()) ? GFP_ATOMIC : GFP_KERNEL;
+
+	*record = kmalloc(sizeof(struct logger_record), flags);
+
+	if (!(*record)) {
+		/* failed to allocate memory */
+		pr_notice("%s: failed to allocate memory\n", __func__);
+		return -1;
+	}
+
+	(*record)->iov[0].iov_base = kmalloc(LOG_BUF_SIZE, flags);
+
+	if (!(*record)->iov[0].iov_base) {
+		/* failed to allocate memory */
+		pr_notice("%s: failed to allocate memory\n", __func__);
+		kfree(*record);
+		return -1;
+	}
+
+	(*record)->iov_buf_size = LOG_BUF_SIZE;
+
+	return 0;
+}
+
+static int free_record(struct logger_record *record)
+{
+	kfree(record->iov[0].iov_base);
+	kfree(record);
+	return 0;
+}
+
+int logger_wait_record(void)
+{
+	int ret;
+
+	ret = wait_event_interruptible(record_wait,
+			!list_empty(&record_list));
+
+	return ret;
+}
+
+/*
+ * logger_aio_write_record - write method for record.
+ */
+static ssize_t logger_aio_write_record(struct logger_record *record)
+{
+	const struct kvec *iov = record->iov;
+	unsigned long nr_segs = record->nr_segs;
+	struct logger_log *log = cnfd_logger_log;
+	ssize_t ret = 0;
+
+	if (NULL == cnfd_logger_log) {
+		pr_notice("%s: cnfd_logger_log==NULL\n", __func__);
+		return 0;
+	}
+	/* null writes succeed, return zero */
+	if (unlikely(!record->header.len)) {
+		pr_notice("%s: end len==0\n", __func__);
+		return 0;
+	}
+
+	/*
+	 * Fix up any readers, pulling them forward to the first readable
+	 * entry after (what will be) the new write offset. We do this now
+	 * because if we partially fail, we can end up with clobbered log
+	 * entries that encroach on readable buffer.
+	 */
+	fix_up_readers(log, sizeof(struct logger_entry) + record->header.len);
+
+	do_write_log(log, &record->header, sizeof(struct logger_entry));
+
+	while (nr_segs-- > 0) {
+		size_t len;
+
+		/* figure out how much of this vector we can keep */
+		len = min_t(size_t, iov->iov_len, record->header.len - ret);
+
+		/* write out this segment's payload */
+		do_write_log(log, iov->iov_base, len);
+
+		iov++;
+		ret += len;
+	}
+
+	/* wake up any blocked readers */
+	wake_up_interruptible(&log->wq);
+
+	return ret;
+}
+
+/*
+ * flush_records
+ */
+void flush_records(void *log)
+{
+	struct logger_log *log_info = (struct logger_log *)log;
+	struct logger_record *record;
+	int		ret;
+
+	if (log_info != cnfd_logger_log) {
+		return;
+	}
+
+	while (dequeue_record(&record) > 0) {
+		ret = logger_aio_write_record(record);
+		free_record(record);
+	}
+}
+
+/*
+ * logger_write_to_log - write method for kernel.
+ */
+int logger_write_to_log(int bufID, int prio, const char *tag, const char *fmt, ...)
+{
+	va_list ap;
+	char *msg;
+	size_t len;
+	struct timespec now;
+	int ofs;
+	struct logger_record *record;
+	struct logger_log *log;
+	int ret = -1;
+
+	if (0 == cnfd_log_enabled) {
+		return 0;
+	}
+	if (bufID != LOG_ID_CNFD) {
+		/* invalid bufID */
+		pr_notice("%s: bufID %d is not supported\n", __func__, bufID);
+		return ret;
+	}
+
+	if (alloc_record(&record)) {
+		/* failed to allocate memory */
+		pr_notice("%s: failed to allocate memory\n", __func__);
+		return ret;
+	}
+
+	/* create record */
+	record->bufID = bufID;
+
+	now = current_kernel_time();
+
+	msg = record->iov[0].iov_base;
+	ofs = 0;
+	msg[0] = prio;
+	ofs += 1;
+	memcpy(&msg[ofs], tag, strlen(tag) + 1);
+	ofs += strlen(tag) + 1;
+
+	va_start(ap, fmt);
+	vsnprintf(&msg[ofs], record->iov_buf_size - ofs, fmt, ap);
+	va_end(ap);
+
+	record->iov[0].iov_len = ofs + strlen(&msg[ofs]) + 1;
+	record->nr_segs = 1;
+
+	len = record->iov[0].iov_len;
+
+	record->header.pid = current->tgid;
+	record->header.tid = current->pid;
+	record->header.sec = now.tv_sec;
+	record->header.nsec = now.tv_nsec;
+	record->header.euid = current_euid();
+	record->header.len = min_t(size_t, len, LOGGER_ENTRY_MAX_PAYLOAD);
+	record->header.hdr_size = sizeof(struct logger_entry);
+
+	if (in_atomic() || irqs_disabled()) {
+		queue_record(record);
+		ret = len;
+	}
+	else {
+		log = cnfd_logger_log;
+		mutex_lock(&log->mutex);
+		flush_records(log);
+		ret = logger_aio_write_record(record);
+		mutex_unlock(&log->mutex);
+		free_record(record);
+	}
+
+	return len;
+}
+
+/*
+ * logger_flush_thread()
+ *
+ * Note:
+ */
+static int logger_flush_thread(void* dummy)
+{
+	struct logger_log *log = cnfd_logger_log;
+
+	if (NULL == cnfd_logger_log) {
+		pr_notice("%s: cnfd_logger_log==NULL\n", __func__);
+		return 0;
+	}
+	for (;;) {
+		logger_wait_record();
+		mutex_lock(&log->mutex);
+		flush_records(log);
+		mutex_unlock(&log->mutex);
+	}
+
+	return 0;
+}
+
+#else /* KC_LOG_CNFD_ENABLED */
+
+int logger_write_to_log(int bufID, int prio, const char *tag, const char *fmt, ...)
+{
+	return 0;
+}
+
+#endif /* KC_LOG_CNFD_ENABLED */
+
 static const struct file_operations logger_fops = {
 	.owner = THIS_MODULE,
 	.read = logger_read,
@@ -750,13 +1050,13 @@ static const struct file_operations logger_fops = {
  * Log size must must be a power of two, and greater than
  * (LOGGER_ENTRY_MAX_PAYLOAD + sizeof(struct logger_entry)).
  */
-static int __init create_log(char *log_name, int size)
+static int __init create_log(char *log_name, int size, unsigned char* buff_addr, unsigned char* info_addr)
 {
 	int ret = 0;
 	struct logger_log *log;
 	unsigned char *buffer;
 
-	buffer = vmalloc(size);
+	buffer = buff_addr;
 	if (buffer == NULL)
 		return -ENOMEM;
 
@@ -783,6 +1083,7 @@ static int __init create_log(char *log_name, int size)
 	log->w_off = 0;
 	log->head = 0;
 	log->size = size;
+	log->log_info = (logger_log_info*)info_addr;
 
 	INIT_LIST_HEAD(&log->logs);
 	list_add_tail(&log->logs, &log_list);
@@ -812,19 +1113,19 @@ static int __init logger_init(void)
 {
 	int ret;
 
-	ret = create_log(LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024);
+	ret = create_log(LOGGER_LOG_MAIN, SIZE_LOGCAT_MAIN, ADDR_LOGCAT_MAIN, (unsigned char*)ADDR_LOGGER_INFO_MAIN);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_EVENTS, CONFIG_LOGCAT_SIZE*1024);
+	ret = create_log(LOGGER_LOG_EVENTS, SIZE_LOGCAT_EVENTS, ADDR_LOGCAT_EVENTS, (unsigned char*)ADDR_LOGGER_INFO_EVENTS);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_RADIO, CONFIG_LOGCAT_SIZE*1024);
+	ret = create_log(LOGGER_LOG_RADIO, SIZE_LOGCAT_RADIO, ADDR_LOGCAT_RADIO, (unsigned char*)ADDR_LOGGER_INFO_RADIO);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_SYSTEM, CONFIG_LOGCAT_SIZE*1024);
+	ret = create_log(LOGGER_LOG_SYSTEM, SIZE_LOGCAT_SYSTEM, ADDR_LOGCAT_SYSTEM, (unsigned char*)ADDR_LOGGER_INFO_SYSTEM);
 	if (unlikely(ret))
 		goto out;
 
@@ -846,6 +1147,58 @@ static void __exit logger_exit(void)
 	}
 }
 
+#ifdef KC_LOG_CNFD_ENABLED
+/*
+ * cnfd_log_init()
+ *
+ * Note: Confidential Log init.
+ */
+static int __init cnfd_log_init(void)
+{
+	int ret = 0;
+	unsigned long value = 0;
+	struct task_struct *task;
+	struct logger_log *log;
+
+	ret = get_emmc_info_settings(RESETLOG_SETTINGS_INDEX_CLOG, &value);
+	if (ret) {
+		pr_err("cnfd : failed to get emmc info settings ret = %d!\n", ret);
+		goto out;
+	}
+
+	if ((value & CLOG_VALUE_ENABLED_MASK) == CLOG_VALUE_ENABLED) {
+		ret = create_log(LOGGER_LOG_CNFD, SIZE_LOGCAT_CNFD, ADDR_LOGCAT_CNFD, ADDR_LOGGER_INFO_CNFD);
+		if (unlikely(ret)) {
+			pr_err("cnfd : failed to create log ret = %d!\n", ret);
+			goto out;
+		}
+
+		list_for_each_entry(log, &log_list, logs) {
+			if (0 == strcmp(log->misc.name, LOGGER_LOG_CNFD)) {
+				cnfd_logger_log = log;
+				break;
+			}
+		}
+		if (cnfd_logger_log == NULL) {
+			ret = -1;
+			pr_err("cnfd : cnfd_logger_log = NULL!\n");
+			goto out;
+		}
+
+		task = kthread_run(logger_flush_thread, NULL, "loggerflush");
+		if (IS_ERR(task)) {
+			ret = PTR_ERR(task);
+			pr_err("cnfd : failed to kthread run ret = %d!\n", ret);
+		}
+		cnfd_log_enabled = 1;
+	}
+	return 0;
+out:
+	return ret;
+}
+
+late_initcall(cnfd_log_init);
+#endif /* KC_LOG_CNFD_ENABLED */
 
 device_initcall(logger_init);
 module_exit(logger_exit);

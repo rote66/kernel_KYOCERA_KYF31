@@ -1,4 +1,8 @@
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+/*
  *  linux/drivers/video/fbmem.c
  *
  *  Copyright (C) 1994 Martin Schaller
@@ -35,6 +39,8 @@
 
 #include <asm/fb.h>
 
+#include "msm/mdss/disp_ext.h"
+#include "msm/mdss/disp_ext_sub_ctrl.h"
 
     /*
      *  Frame buffer device initialization and setup routines
@@ -1097,6 +1103,8 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		ret = copy_to_user(argp, &var, sizeof(var)) ? -EFAULT : 0;
 		break;
 	case FBIOPUT_VSCREENINFO:
+		if (info->node == 0 && disp_ext_is_invalid())
+			return 0;
 		if (copy_from_user(&var, argp, sizeof(var)))
 			return -EFAULT;
 		if (!lock_fb_info(info))
@@ -1137,13 +1145,17 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		ret = fb_cmap_to_user(&cmap_from, &cmap);
 		break;
 	case FBIOPAN_DISPLAY:
+		if (info->node == 0 && disp_ext_is_invalid())
+			return 0;
 		if (copy_from_user(&var, argp, sizeof(var)))
 			return -EFAULT;
 		if (!lock_fb_info(info))
 			return -ENODEV;
-		console_lock();
+		if (info->node != 1)
+			console_lock();
 		ret = fb_pan_display(info, &var);
-		console_unlock();
+		if (info->node != 1)
+			console_unlock();
 		unlock_fb_info(info);
 		if (ret == 0 && copy_to_user(argp, &var, sizeof(var)))
 			return -EFAULT;
@@ -1190,12 +1202,28 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	case FBIOBLANK:
 		if (!lock_fb_info(info))
 			return -ENODEV;
-		console_lock();
+		if (info->node != 1)
+			console_lock();
 		info->flags |= FBINFO_MISC_USEREVENT;
 		ret = fb_blank(info, arg);
 		info->flags &= ~FBINFO_MISC_USEREVENT;
-		console_unlock();
+		if (info->node != 1)
+			console_unlock();
 		unlock_fb_info(info);
+		break;
+	case FBIOPUT_DIAGVALID:
+		pr_info("SET do_fb_ioctl(): fb_dm_flag = OFF -----\n");
+		disp_ext_set_dmflag(0);
+		break;
+	case FBIOPUT_DIAGINVALID:
+		pr_info("SET do_fb_ioctl(): fb_dm_flag = ON -----\n");
+		disp_ext_set_dmflag(1);
+		break;
+	case FBIOPUT_DIAGSUBVALID:
+		disp_ext_sub_set_dmflag(0);
+		break;
+	case FBIOPUT_DIAGSUBINVALID:
+		disp_ext_sub_set_dmflag(1);
 		break;
 	default:
 		fb = info->fbops;

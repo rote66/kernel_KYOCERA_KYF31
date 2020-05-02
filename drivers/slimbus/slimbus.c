@@ -1,3 +1,9 @@
+/*
+ *
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ *
+ */
 /* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -1882,10 +1888,16 @@ int slim_dealloc_ch(struct slim_device *sb, u16 chanh)
 {
 	struct slim_controller *ctrl = sb->ctrl;
 	u8 chan = SLIM_HDL_TO_CHIDX(chanh);
+#ifdef CONFIG_KYOCERA_MSND
+	struct slim_ich *slc;
+#else
 	struct slim_ich *slc = &ctrl->chans[chan];
+#endif /* CONFIG_KYOCERA_MSND */
 	if (!ctrl)
 		return -EINVAL;
-
+#ifdef CONFIG_KYOCERA_MSND
+    slc = &ctrl->chans[chan];
+#endif /* CONFIG_KYOCERA_MSND */
 	mutex_lock(&ctrl->sched.m_reconf);
 	if (slc->state == SLIM_CH_FREE) {
 		mutex_unlock(&ctrl->sched.m_reconf);

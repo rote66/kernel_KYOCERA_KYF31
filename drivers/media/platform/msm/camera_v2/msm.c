@@ -9,6 +9,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/of.h>
 #include <linux/module.h>
@@ -561,6 +565,37 @@ int msm_destroy_session(unsigned int session_id)
 	}
 
 	return 0;
+}
+
+static int __msm_error_notify(void *d1, void *d2)
+{
+	struct v4l2_event event;
+	struct msm_v4l2_event_data *event_data =
+		(struct msm_v4l2_event_data *)&event.u.data[0];
+	struct msm_session *session = d1;
+
+	event.type = MSM_CAMERA_V4L2_EVENT_TYPE;
+	event.id   = MSM_CAMERA_MSM_NOTIFY;
+	if(*(unsigned int *)d2 == MSM_CAMERA_PRIV_I2C_ERROR){
+		event_data->command = MSM_CAMERA_PRIV_I2C_ERROR;
+	}
+	v4l2_event_queue(session->event_q.vdev, &event);
+
+	return 0;
+}
+
+void msm_error_notify(unsigned int session_id, unsigned int err_type)
+{
+	struct msm_session *session;
+
+	session = msm_queue_find(msm_session_q, struct msm_session,
+		list, __msm_queue_find_session, &session_id);
+	if (!session)
+		return;
+		msm_queue_traverse_action(msm_session_q, struct msm_stream, list,
+			__msm_error_notify, &err_type);
+
+	return;
 }
 
 static int __msm_close_destry_session_notify_apps(void *d1, void *d2)

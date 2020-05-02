@@ -5,6 +5,14 @@
  * only version 2 as published by the Free Software Foundation.
  */
 
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
+
+
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -14,6 +22,9 @@
 #include <linux/pinctrl/consumer.h>
 
 #include "ci13xxx_udc.c"
+
+#include <soc/qcom/oem_fact.h>
+
 
 #define MSM_USB_BASE	(udc->regs)
 
@@ -29,6 +40,8 @@ struct ci13xxx_udc_context {
 };
 
 static struct ci13xxx_udc_context _udc_ctxt;
+
+static bool oem_limit_usb_speed = false;
 
 static irqreturn_t msm_udc_irq(int irq, void *data)
 {
@@ -198,6 +211,10 @@ static void ci13xxx_msm_notify_event(struct ci13xxx *udc, unsigned event)
 	case CI13XXX_CONTROLLER_RESET_EVENT:
 		dev_info(dev, "CI13XXX_CONTROLLER_RESET_EVENT received\n");
 		ci13xxx_msm_reset();
+#if 1
+               if (oem_limit_usb_speed == true)
+                       writel(readl(USB_PORTSC) | (1<<24) , USB_PORTSC);
+#endif
 		break;
 	case CI13XXX_CONTROLLER_DISCONNECT_EVENT:
 		dev_info(dev, "CI13XXX_CONTROLLER_DISCONNECT_EVENT received\n");
@@ -437,6 +454,10 @@ static int ci13xxx_msm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "request_irq failed\n");
 		goto gpio_uninstall;
 	}
+
+    if(oem_fact_get_option_bit(OEM_FACT_OPTION_ITEM_03, 0)) {
+    	oem_limit_usb_speed = true;
+    }
 
 	pm_runtime_no_callbacks(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);

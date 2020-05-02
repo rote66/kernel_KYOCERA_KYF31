@@ -9,6 +9,10 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/err.h>
 #include <linux/slab.h>
@@ -20,10 +24,16 @@
 #include <linux/pm_runtime.h>
 #include <linux/reboot.h>
 
+#include <soc/qcom/smsm.h>
+
 #include "core.h"
 #include "bus.h"
 #include "mmc_ops.h"
 #include "sd_ops.h"
+
+static char ram[KCC_SMEM_DDR_DATA_INFO_SIZE];
+
+unsigned long mmc_log = 0; /* Debug Console Flag OFF:0 ON:Other */
 
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
@@ -691,6 +701,35 @@ MMC_DEV_ATTR(enhanced_area_size, "%u\n", card->ext_csd.enhanced_area_size);
 MMC_DEV_ATTR(raw_rpmb_size_mult, "%#x\n", card->ext_csd.raw_rpmb_size_mult);
 MMC_DEV_ATTR(rel_sectors, "%#x\n", card->ext_csd.rel_sectors);
 
+static ssize_t ram_show (struct device *dev, struct device_attribute *attr, char *buf) {
+	static int initialized = 0;
+	if(!initialized) {
+		memcpy(ram, kc_smem_alloc(SMEM_DDR_DATA_INFO,KCC_SMEM_DDR_DATA_INFO_SIZE),KCC_SMEM_DDR_DATA_INFO_SIZE);
+		initialized = 1;
+	}
+	buf[0] = ram[0];
+	return sizeof(buf[0]);
+}
+static ssize_t rom_show (struct device *dev, struct device_attribute *attr, char *buf) {
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	buf[0] = card->cid.manfid;
+	return sizeof(buf[0]);
+}
+
+static ssize_t mmc_log_show (struct device *dev, struct device_attribute *attr, char *buf) {
+	return sprintf(buf, "%ld\n", mmc_log);
+}
+
+static ssize_t mmc_log_store (struct device *dev, struct device_attribute *attr, const char *buf, size_t len) {
+	mmc_log = simple_strtoul(buf, NULL, 0);
+	return len;
+}
+
+DEVICE_ATTR(ram, S_IRUGO, ram_show, NULL);
+DEVICE_ATTR(rom, S_IRUGO, rom_show, NULL);
+
+DEVICE_ATTR(mmc_log, S_IRUGO|S_IWUSR, mmc_log_show, mmc_log_store);
+
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_cid.attr,
 	&dev_attr_csd.attr,
@@ -708,6 +747,9 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_enhanced_area_size.attr,
 	&dev_attr_raw_rpmb_size_mult.attr,
 	&dev_attr_rel_sectors.attr,
+	&dev_attr_ram.attr,
+	&dev_attr_rom.attr,
+	&dev_attr_mmc_log.attr,
 	NULL,
 };
 
@@ -1705,7 +1747,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 					card->bkops_info.host_delay_ms;
 		}
 	}
-
+	memcpy(&host->cached_ios, &host->ios, sizeof(host->cached_ios));
 	return 0;
 
 free_card:
@@ -1852,10 +1894,44 @@ static int mmc_suspend(struct mmc_host *host)
 		err = mmc_card_sleep(host);
 	else if (!mmc_host_is_spi(host))
 		err = mmc_deselect_cards(host);
-	host->card->state &= ~(MMC_STATE_HIGHSPEED | MMC_STATE_HIGHSPEED_200);
+//	host->card->state &= ~(MMC_STATE_HIGHSPEED | MMC_STATE_HIGHSPEED_200);
 
 out:
 	mmc_release_host(host);
+	return err;
+}
+
+static int mmc_partial_init(struct mmc_host *host)
+{
+	int err = 0;
+	struct mmc_card *card = host->card;
+	u32 tuning_cmd;
+
+	pr_debug("%s: %s: bw: %d timing: %d clock: %d\n", mmc_hostname(host),
+		__func__,  host->cached_ios.bus_width,  host->cached_ios.timing,
+		host->cached_ios.clock);
+
+	mmc_set_bus_width(host, host->cached_ios.bus_width);
+	mmc_set_timing(host, host->cached_ios.timing);
+	mmc_set_clock(host, host->cached_ios.clock);
+
+	if (host->ops->execute_tuning && (mmc_card_hs200(card) ||
+					  mmc_card_hs400(card))) {
+		mmc_host_clk_hold(host);
+
+		if (mmc_card_hs200(card))
+			tuning_cmd = MMC_SEND_TUNING_BLOCK_HS200;
+		else if (mmc_card_hs400(card))
+			tuning_cmd = MMC_SEND_TUNING_BLOCK_HS400;
+
+		err = host->ops->execute_tuning(host,
+				tuning_cmd);
+
+		mmc_host_clk_release(host);
+	}
+	if (err)
+		pr_err("%s: tuning execution failed\n",
+			   mmc_hostname(host));
 	return err;
 }
 
@@ -1874,6 +1950,22 @@ static int mmc_resume(struct mmc_host *host)
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
+
+	if (host->caps2 & MMC_CAP2_AWAKE_SUPP) {
+		err = mmc_card_awake(host);
+		if (err) {
+			pr_err("%s: %s: failed (%d) awake using CMD5\n",
+			       mmc_hostname(host),  __func__, err);
+		} else {
+			err = mmc_partial_init(host);
+			if (!err) {
+				if (host->caps2 & MMC_CAP2_CACHE_CTRL)
+					mmc_cache_ctrl(host, 1);
+				goto success;
+			}
+		}
+	}
+
 	retries = 3;
 	while (retries) {
 		err = mmc_init_card(host, host->ocr, host->card);
@@ -1890,6 +1982,8 @@ static int mmc_resume(struct mmc_host *host)
 		}
 		break;
 	}
+
+success:
 	mmc_release_host(host);
 
 	/*

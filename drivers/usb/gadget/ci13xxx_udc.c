@@ -11,6 +11,12 @@
  */
 
 /*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
+
+/*
  * Description: MIPS USB IP core family device controller
  *              Currently it only supports IP part number CI13412
  *
@@ -79,6 +85,15 @@
 #define USB_MAX_TIMEOUT		25 /* 25msec timeout */
 #define EP_PRIME_CHECK_DELAY	(jiffies + msecs_to_jiffies(1000))
 #define MAX_PRIME_CHECK_RETRY	3 /*Wait for 3sec for EP prime failure */
+
+#define kc_dbg(instance, format, arg...)			\
+	if (ci13xxx_debug_log)							\
+		dev_info(instance , format , ## arg)
+
+/* Enable Proprietary charger detection */
+bool ci13xxx_debug_log = false;
+module_param(ci13xxx_debug_log, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(ci13xxx_debug_log, "Enable KC Log Output");
 
 /* ctrl register bank access */
 static DEFINE_SPINLOCK(udc_lock);
@@ -3681,6 +3696,9 @@ static int ci13xxx_pullup(struct usb_gadget *_gadget, int is_active)
 		hw_device_state(0);
 	}
 
+	kc_dbg(&udc->gadget.dev, "= USB DET I = : %s D+ Pull %s\n",
+		__func__, is_active ? "Up" : "Down");
+
 	return 0;
 }
 
@@ -3882,6 +3900,7 @@ static irqreturn_t udc_irq(void)
 
 		/* order defines priority - do NOT change it */
 		if (USBi_URI & intr) {
+			kc_dbg(&udc->gadget.dev, "= USB INT I = : %s USB RESET RECEIVED\n", __func__);
 			isr_statistics.uri++;
 			if (!hw_cread(CAP_PORTSC, PORTSC_PR))
 				pr_info("%s: USB reset interrupt is delayed\n",
@@ -3889,17 +3908,21 @@ static irqreturn_t udc_irq(void)
 			isr_reset_handler(udc);
 		}
 		if (USBi_PCI & intr) {
+			kc_dbg(&udc->gadget.dev, "= USB INT I = : %s USB RESUME\n", __func__);
 			isr_statistics.pci++;
 			isr_resume_handler(udc);
 		}
-		if (USBi_UEI & intr)
+		if (USBi_UEI & intr) {
+			kc_dbg(&udc->gadget.dev, "= USB INT I = : %s USB ERROR INTERRUPT\n", __func__);
 			isr_statistics.uei++;
+		}
 		if (USBi_UI  & intr) {
 			isr_statistics.ui++;
 			udc->gadget.xfer_isr_count++;
 			isr_tr_complete_handler(udc);
 		}
 		if (USBi_SLI & intr) {
+			kc_dbg(&udc->gadget.dev, "= USB INT I = : %s USB SUSPEND\n", __func__);
 			isr_suspend_handler(udc);
 			isr_statistics.sli++;
 		}

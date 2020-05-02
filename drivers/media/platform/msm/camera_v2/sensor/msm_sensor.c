@@ -9,12 +9,16 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+/* This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 #include "msm_sensor.h"
 #include "msm_sd.h"
 #include "camera.h"
 #include "msm_cci.h"
 #include "msm_camera_io_util.h"
 #include "msm_camera_i2c_mux.h"
+#include "msm.h"
 #include <linux/regulator/rpm-smd-regulator.h>
 #include <linux/regulator/consumer.h>
 
@@ -765,8 +769,14 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 			pr_err("%s:%d: i2c_read failed\n", __func__, __LINE__);
 			break;
 		}
+#if 1
+		read_config.data = local_data;
+		if (copy_to_user((void *)compat_ptr(cdata->cfg.setting),
+			&read_config, sizeof(struct msm_camera_i2c_read_config))) {
+#else
 		if (copy_to_user(&read_config.data,
 			(void *)&local_data, sizeof(uint16_t))) {
+#endif
 			pr_err("%s:%d copy failed\n", __func__, __LINE__);
 			rc = -EFAULT;
 			break;
@@ -926,6 +936,33 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		}
 		break;
 	}
+    case CFG_GET_EXPOSURE: {
+        uint16_t addr[] = {0x3500,0x3501,0x3502};
+        uint16_t data[] = {0x00,0x00,0x00};
+        uint32_t ret = 0x0000;
+        int i;
+
+        for( i = 0 ; i < ARRAY_SIZE(addr);i++){
+            rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->i2c_read(
+                     s_ctrl->sensor_i2c_client,
+                     addr[i], &data[i], MSM_CAMERA_I2C_BYTE_DATA);
+            CDBG("Get camera exposure addr = [0x%04X]\n", addr[i]);
+            CDBG("Get camera exposure data = [0x%04X]\n", data[i]);
+            if (rc < 0) {
+                pr_err("%s:%d: i2c_read failed\n", __func__, __LINE__);
+                msm_error_notify((unsigned int)s_ctrl->sensordata->sensor_info->session_id, MSM_CAMERA_PRIV_I2C_ERROR);
+            }
+        }
+        /* Exposure time = 0x3500[3:0],0x0351[7:0],0x0352[7:4] read * 0.016840278ms */
+        ret = (((uint32_t)data[0] & 0x0000000FL) << 12) | ((data[1] & 0x00FF) << 4) | ((data[2] & 0x00F0) >> 4);
+        ret = (ret * 1684)/10;
+        CDBG("Get camera exposure ret = [0x%08X]\n", ret);
+        if (copy_to_user((void *)cdata->cfg.setting, (void *)&ret, sizeof(uint32_t)))
+        {
+            rc = -EFAULT;
+        }
+        break;
+    }
 
 	default:
 		rc = -EFAULT;
@@ -1041,6 +1078,11 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 		rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->i2c_write_table(
 			s_ctrl->sensor_i2c_client, &conf_array);
 		kfree(reg_setting);
+		if (rc < 0) {
+			pr_err("%s:%d: i2c_write failed\n", __func__, __LINE__);
+			msm_error_notify((unsigned int)s_ctrl->sensordata->sensor_info->session_id, MSM_CAMERA_PRIV_I2C_ERROR);
+		}
+
 		break;
 	}
 	case CFG_SLAVE_READ_I2C: {
@@ -1083,10 +1125,17 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 				&local_data, read_config.data_type);
 		if (rc < 0) {
 			pr_err("%s:%d: i2c_read failed\n", __func__, __LINE__);
+			msm_error_notify((unsigned int)s_ctrl->sensordata->sensor_info->session_id, MSM_CAMERA_PRIV_I2C_ERROR);
 			break;
 		}
+#if 1
+		read_config.data = local_data;
+		if (copy_to_user((void *)cdata->cfg.setting,
+			&read_config, sizeof(struct msm_camera_i2c_read_config))) {
+#else
 		if (copy_to_user(&read_config.data,
 			(void *)&local_data, sizeof(uint16_t))) {
+#endif
 			pr_err("%s:%d copy failed\n", __func__, __LINE__);
 			rc = -EFAULT;
 			break;
@@ -1157,6 +1206,10 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 				write_slave_addr >> 1);
 		rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->i2c_write_table(
 			s_ctrl->sensor_i2c_client, &(write_config.conf_array));
+		if (rc < 0) {
+			pr_err("%s:%d: i2c_write failed\n", __func__, __LINE__);
+			msm_error_notify((unsigned int)s_ctrl->sensordata->sensor_info->session_id, MSM_CAMERA_PRIV_I2C_ERROR);
+		}
 		if (s_ctrl->sensor_i2c_client->cci_client) {
 			s_ctrl->sensor_i2c_client->cci_client->sid =
 				orig_slave_addr;
@@ -1220,6 +1273,10 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 			i2c_write_seq_table(s_ctrl->sensor_i2c_client,
 			&conf_array);
 		kfree(reg_setting);
+		if (rc < 0) {
+			pr_err("%s:%d: i2c_write failed\n", __func__, __LINE__);
+			msm_error_notify((unsigned int)s_ctrl->sensordata->sensor_info->session_id, MSM_CAMERA_PRIV_I2C_ERROR);
+		}
 		break;
 	}
 
@@ -1314,6 +1371,33 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 		}
 		break;
 	}
+    case CFG_GET_EXPOSURE: {
+        uint16_t addr[] = {0x3500,0x3501,0x3502};
+        uint16_t data[] = {0x00,0x00,0x00};
+        uint32_t ret = 0x0000;
+        int i;
+
+        for( i = 0 ; i < ARRAY_SIZE(addr);i++){
+            rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->i2c_read(
+                     s_ctrl->sensor_i2c_client,
+                     addr[i], &data[i], MSM_CAMERA_I2C_BYTE_DATA);
+            CDBG("Get camera exposure addr = [0x%04X]\n", addr[i]);
+            CDBG("Get camera exposure data = [0x%04X]\n", data[i]);
+            if (rc < 0) {
+                pr_err("%s:%d: i2c_read failed\n", __func__, __LINE__);
+                msm_error_notify((unsigned int)s_ctrl->sensordata->sensor_info->session_id, MSM_CAMERA_PRIV_I2C_ERROR);
+            }
+        }
+        /* Exposure time = 0x3500[3:0],0x0351[7:0],0x0352[7:4] read * 0.016840278ms */
+        ret = (((uint32_t)data[0] & 0x0000000FL) << 12) | ((data[1] & 0x00FF) << 4) | ((data[2] & 0x00F0) >> 4);
+        ret = (ret * 1684)/10;
+        CDBG("Get camera exposure ret = [0x%08X]\n", ret);
+        if (copy_to_user((void *)cdata->cfg.setting, (void *)&ret, sizeof(uint32_t)))
+        {
+            rc = -EFAULT;
+        }
+        break;
+    }
 	default:
 		rc = -EFAULT;
 		break;

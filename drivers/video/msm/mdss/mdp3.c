@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
  *
@@ -283,6 +287,7 @@ void mdp3_irq_suspend(void)
 	}
 	if (mdp3_res->irq_ref_cnt == 0 && irq_enabled) {
 		MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, 0);
+		mdp3_res->irq_mask = 0;
 		mdp3_res->mdss_util->disable_irq_nosync(&mdp3_res->mdp3_hw);
 	}
 	spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
@@ -903,9 +908,11 @@ static int mdp3_hw_init(void)
 		mdp3_res->dma[i].capability = MDP3_DMA_CAP_ALL;
 		mdp3_res->dma[i].in_use = 0;
 		mdp3_res->dma[i].available = 1;
+		mdp3_res->dma[i].cc_vect_sel = 0;
 		mdp3_res->dma[i].lut_sts = 0;
 		mdp3_res->dma[i].hist_cmap = NULL;
 		mdp3_res->dma[i].gc_cmap = NULL;
+		mutex_init(&mdp3_res->dma[i].pp_lock);
 	}
 	mdp3_res->dma[MDP3_DMA_S].capability = MDP3_DMA_CAP_DITHER;
 	mdp3_res->dma[MDP3_DMA_E].available = 0;
@@ -2271,10 +2278,17 @@ static void mdp3_debug_deinit(struct platform_device *pdev)
 
 static void mdp3_dma_underrun_intr_handler(int type, void *arg)
 {
+	struct mdp3_dma *dma = &mdp3_res->dma[MDP3_DMA_P];
+
 	mdp3_res->underrun_cnt++;
-	pr_err("display underrun detected count=%d\n",
+	pr_err_ratelimited("display underrun detected count=%d\n",
 			mdp3_res->underrun_cnt);
 	ATRACE_INT("mdp3_dma_underrun_intr_handler", mdp3_res->underrun_cnt);
+
+	if (dma->ccs_config.ccs_enable && !dma->ccs_config.ccs_dirty) {
+		dma->ccs_config.ccs_dirty = true;
+		schedule_work(&dma->underrun_work);
+	}
 }
 
 static ssize_t mdp3_show_capabilities(struct device *dev,
@@ -2371,7 +2385,7 @@ int mdp3_misr_get(struct mdp_misr *misr_resp)
 	case DISPLAY_MISR_DSI0:
 		MDP3_REG_WRITE(MDP3_REG_DSI_VIDEO_EN, 0);
 		/* Sleep for one vsync after DSI video engine is disabled */
-		msleep(20);
+		usleep(20 * 1000);
 		/* Enable DSI_VIDEO_0 MISR Block */
 		MDP3_REG_WRITE(MDP3_REG_MODE_DSI_PCLK, 0x20);
 		/* Reset MISR Block */
@@ -2515,6 +2529,7 @@ static int mdp3_probe(struct platform_device *pdev)
 		.cb = mdp3_dma_underrun_intr_handler,
 		.data = NULL,
 	};
+	pr_debug("%s: Start\n",__func__);
 
 	if (!pdev->dev.of_node) {
 		pr_err("MDP driver only supports device tree probe\n");
@@ -2616,6 +2631,7 @@ get_util_fail:
 		}
 	}
 
+	pr_debug("%s: End ret=%d\n",__func__,rc);
 	return rc;
 }
 

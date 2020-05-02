@@ -1,3 +1,8 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
+
 /* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,6 +27,24 @@
 #include <linux/err.h>
 #include "../../staging/android/timed_output.h"
 
+#define VIB_LOG_TAG		"[VIB]:"
+
+#ifdef KC_BATTERY_LOG_ENABLED
+#include <linux/clog.h>
+#define KCBLOG(tag, ...)  CLOG(tag, ##__VA_ARGS__)
+#else
+#define KCBLOG(tag, ...) do{} while(0)
+#endif
+
+#define VIB_DEBUG		0
+#if VIB_DEBUG
+#define VIB_DEBUG_LOG( msg... )	printk(KERN_ERR "[VIB]:" msg)
+#else
+#define VIB_DEBUG_LOG( msg... )
+#endif
+#define VIB_ERR_LOG( msg... ) 	printk(KERN_ERR "[VIB]:" msg)
+#define VIB_INFO_LOG( msg... ) 	printk(KERN_INFO "[VIB]:" msg)
+
 #define QPNP_VIB_VTG_CTL(base)		(base + 0x41)
 #define QPNP_VIB_EN_CTL(base)		(base + 0x46)
 
@@ -29,7 +52,7 @@
 #define QPNP_VIB_MIN_LEVEL		12
 
 #define QPNP_VIB_DEFAULT_TIMEOUT	15000
-#define QPNP_VIB_DEFAULT_VTG_LVL	3100
+#define QPNP_VIB_DEFAULT_VTG_LVL	3000
 
 #define QPNP_VIB_EN			BIT(7)
 #define QPNP_VIB_VTG_SET_MASK		0x1F
@@ -151,6 +174,8 @@ static int qpnp_vib_set(struct qpnp_vib *vib, int on)
 			pwm_enable(vib->pwm_info.pwm_dev);
 		else {
 			val = vib->reg_en_ctl;
+			if (!(val & QPNP_VIB_EN))
+				KCBLOG("vib","+vib");
 			val |= QPNP_VIB_EN;
 			rc = qpnp_vib_write_u8(vib, &val,
 					QPNP_VIB_EN_CTL(vib->base));
@@ -163,6 +188,8 @@ static int qpnp_vib_set(struct qpnp_vib *vib, int on)
 			pwm_disable(vib->pwm_info.pwm_dev);
 		else {
 			val = vib->reg_en_ctl;
+			if (val & QPNP_VIB_EN)
+				KCBLOG("vib","-vib");
 			val &= ~QPNP_VIB_EN;
 			rc = qpnp_vib_write_u8(vib, &val,
 					QPNP_VIB_EN_CTL(vib->base));
@@ -180,14 +207,25 @@ static void qpnp_vib_enable(struct timed_output_dev *dev, int value)
 	struct qpnp_vib *vib = container_of(dev, struct qpnp_vib,
 					 timed_dev);
 
+	pr_debug(VIB_LOG_TAG "%s() value=%d\n", __func__, value);
+	VIB_DEBUG_LOG("%s() called. value=%d\n", __func__, value);
+
 	mutex_lock(&vib->lock);
 	hrtimer_cancel(&vib->vib_timer);
 
 	if (value == 0)
 		vib->state = 0;
 	else {
-		value = (value > vib->timeout ?
-				 vib->timeout : value);
+		if(value < 50) {
+			VIB_DEBUG_LOG("%s() set value to 55.\n", __func__);
+			value = 55;
+		} else if(value < 55) {
+			VIB_DEBUG_LOG("%s() add value 5.\n", __func__);
+			value += 5;
+		} else if(value < 60) {
+			VIB_DEBUG_LOG("%s() add value 3.\n", __func__);
+			value += 3;
+		}
 		vib->state = 1;
 		hrtimer_start(&vib->vib_timer,
 			      ktime_set(value / 1000, (value % 1000) * 1000000),
@@ -195,6 +233,8 @@ static void qpnp_vib_enable(struct timed_output_dev *dev, int value)
 	}
 	mutex_unlock(&vib->lock);
 	schedule_work(&vib->work);
+
+	VIB_DEBUG_LOG("%s() end.\n", __func__);
 }
 
 static void qpnp_vib_update(struct work_struct *work)

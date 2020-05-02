@@ -7,6 +7,11 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
+
 #include <linux/moduleparam.h>
 #include <linux/export.h>
 #include <linux/debugfs.h>
@@ -126,6 +131,9 @@ static int mmc_ios_show(struct seq_file *s, void *data)
 		break;
 	case MMC_TIMING_SD_HS:
 		str = "sd high-speed";
+		break;
+	case MMC_TIMING_UHS_SDR25:
+		str = "sd uhs SDR25";
 		break;
 	case MMC_TIMING_UHS_SDR50:
 		str = "sd uhs SDR50";

@@ -1,3 +1,9 @@
+#
+# This software is contributed or developed by KYOCERA Corporation.
+# (C) 2015 KYOCERA Corporation
+# (C) 2016 KYOCERA Corporation
+#
+
 menu "Android"
 
 config ANDROID
@@ -141,6 +147,22 @@ config ONESHOT_SYNC_USER
 source "drivers/staging/android/ion/Kconfig"
 
 source "drivers/staging/android/fiq_debugger/Kconfig"
+
+config ANDROID_KCJLOG
+	bool "Android kcj log"
+	default n
+	depends on PSTORE && PSTORE_CONSOLE && PSTORE_RAM
+	select MSM_UNINIT_RAM
+	select NOT_USE_PSTOREDUMP
+
+config LOWMEMKILLER_MONITOR
+	bool "Low Memory killer monitor log"
+	default n
+
+config LOWMEMKILLER_LOG_SIZE
+	int "Adjust Low Memory killer monitor log buffer sizes"
+	default 65536
+	depends on LOWMEMKILLER_MONITOR
 
 endif # if ANDROID
 

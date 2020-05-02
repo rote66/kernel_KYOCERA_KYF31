@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2016 KYOCERA Corporation
+ */
 /* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,6 +21,7 @@
 
 #include "mdss_dsi.h"
 #include "mdss_mdp.h"
+#include "disp_ext.h"
 
 /*
  * mdss_report_panel_dead() - Sends the PANEL_ALIVE=0 status to HAL layer.
@@ -161,6 +166,16 @@ void mdss_check_dsi_ctrl_status(struct work_struct *work, uint32_t interval)
 							__func__);
 		return;
 	}
+
+#ifdef CONFIG_DISP_EXT_BOARD
+	if (disp_ext_board_get_panel_detect() != 1) {
+		if (mipi->mode == DSI_CMD_MODE)
+			mutex_unlock(&mdp5_data->ov_lock);
+		mutex_unlock(&ctl->offlock);
+		pr_err("%s: Panel not connected\n", __func__);
+		return;
+	}
+#endif /* CONFIG_DISP_EXT_BOARD */
 
 	/*
 	 * For the command mode panels, we return pan display

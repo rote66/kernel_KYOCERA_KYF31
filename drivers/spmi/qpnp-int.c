@@ -1,3 +1,7 @@
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2015 KYOCERA Corporation
+ */
 /* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -30,6 +34,13 @@
 #include <linux/irqchip/qpnp-int.h>
 
 #include <asm/irq.h>
+
+#ifdef KC_BATTERY_LOG_ENABLED
+#include <linux/clog.h>
+#define KCBLOG(tag, ...)  CLOG(tag, ##__VA_ARGS__)
+#else
+#define KCBLOG(tag, ...) do{} while(0)
+#endif
 
 /* 16 slave_ids, 256 per_ids per slave, and 8 ints per per_id */
 #define QPNPINT_NR_IRQS		(16 * 256 * 8)
@@ -633,6 +644,8 @@ static int __qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
 
 		pr_warn("%d triggered [0x%01x, 0x%02x,0x%01x] %s\n",
 				irq, spec->slave, spec->per, spec->irq, name);
+
+		KCBLOG("resume_irq","%d %s",irq ,name);
 	} else {
 		generic_handle_irq(irq);
 	}

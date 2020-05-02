@@ -10,6 +10,12 @@
  * GNU General Public License for more details.
  *
  */
+/*
+ * This software is contributed or developed by KYOCERA Corporation.
+ * (C) 2014 KYOCERA Corporation
+ * (C) 2015 KYOCERA Corporation
+ * (C) 2016 KYOCERA Corporation
+ */
 
 #include <linux/debugfs.h>
 #include <linux/module.h>
@@ -44,6 +50,13 @@
 #include "idle.h"
 #include "pm-boot.h"
 #include "../../../arch/arm/mach-msm/clock.h"
+
+#ifdef KC_BATTERY_LOG_ENABLED
+#include <linux/clog.h>
+#define KCBLOG(tag, ...)  CLOG(tag, ##__VA_ARGS__)
+#else
+#define KCBLOG(tag, ...) do{} while(0)
+#endif
 
 #define SCM_CMD_TERMINATE_PC	(0x2)
 #define SCM_CMD_CORE_HOTPLUGGED (0x10)
@@ -434,8 +447,18 @@ bool msm_cpu_pm_enter_sleep(enum msm_pm_sleep_mode mode, bool from_idle)
 		pr_info("CPU%u:%s mode:%d during %s\n", cpu, __func__,
 				mode, from_idle ? "idle" : "suspend");
 
+	if (!from_idle  && cpu_online(cpu)) {
+		KCBLOG("cpu","-cpu%u\n",cpu);
+		pr_info("checkpoint: CPU%u: %s mode:%d\n", cpu, __func__, mode);
+	}
+
 	if (execute[mode])
 		exit_stat = execute[mode](from_idle);
+
+	if (!from_idle  && cpu_online(cpu)) {
+		KCBLOG("cpu","+cpu%u\n",cpu);
+		pr_info("checkpoint: CPU%u: %s mode:%d exit\n", cpu, __func__, mode);
+	}
 
 	return exit_stat;
 }
@@ -881,6 +904,8 @@ static struct platform_driver msm_cpu_pm_driver = {
 	},
 };
 
+int msm_pm_mode_sysfs_add(const char *pm_modname );
+
 static int __init msm_pm_drv_init(void)
 {
 	int rc;
@@ -889,10 +914,13 @@ static int __init msm_pm_drv_init(void)
 
 	rc = platform_driver_register(&msm_cpu_pm_snoc_client_driver);
 
-	if (rc)
+	if (rc){
 		pr_err("%s(): failed to register driver %s\n", __func__,
 				msm_cpu_pm_snoc_client_driver.driver.name);
-	return rc;
+		return rc;
+	}
+	msm_pm_mode_sysfs_add((const char *)"msm_pm");
+	return platform_driver_register(&msm_cpu_pm_driver);
 }
 late_initcall(msm_pm_drv_init);
 
