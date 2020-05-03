@@ -41,7 +41,7 @@ LATESTARTSERVICE=false
 
 print_modname() {
   ui_print "*******************************"
-  ui_print "   PA32 EMP kernel modules  "
+  ui_print "   KYF31 EMP kernel modules  "
   ui_print "*******************************"
 }
 

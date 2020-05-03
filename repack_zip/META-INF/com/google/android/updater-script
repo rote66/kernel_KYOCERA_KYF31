@@ -31,7 +31,7 @@ ui_print("-              Instalation Completed             -");
 ui_print("--------------------------------------------------");
 ui_print("-              kernel  by rote66                 -");
 ui_print("--------------------------------------------------");
-ui_print("-Cuttting Edge Aftermarket Sharp Phone Technology-");
+ui_print("-Cuttting Edge Aftermarket Kyocera Phone Technology-");
 ui_print("--------------------------------------------------");
 delete_recursive("/tmp/emp");
 set_progress(1.000000);
