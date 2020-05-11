@@ -349,7 +349,8 @@ void persistent_ram_zap(struct persistent_ram_zone *prz)
 	persistent_ram_update_header_ecc(prz);
 }
 
-static void *persistent_ram_vmap(phys_addr_t start, size_t size,
+#ifndef CONFIG_MSM_UNINIT_RAM
+static void __maybe_unused *persistent_ram_vmap(phys_addr_t start, size_t size,
 		unsigned int memtype)
 {
 	struct page **pages;
