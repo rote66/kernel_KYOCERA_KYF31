@@ -94,3 +94,4 @@ obj-y += OEM_bfss.o
 obj-y += kclog_smem.o
 
 obj-$(CONFIG_FORCE_FAST_CHARGE) += fastchg.o
+obj-$(CONFIG_STATE_NOTIFIER)	+= state_notifier.o
