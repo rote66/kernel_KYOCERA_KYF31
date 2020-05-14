@@ -4,6 +4,7 @@
 #
 # CPUfreq core
 obj-$(CONFIG_CPU_FREQ)			+= cpufreq.o freq_table.o
+
 # CPUfreq stats
 obj-$(CONFIG_CPU_FREQ_STAT)             += cpufreq_stats.o
 
@@ -12,6 +13,29 @@ CFLAGS_cpufreq_stats.o += -DKC_BATTERY_LOG_ENABLED
 endif
 
 # CPUfreq governors 
+obj-$(CONFIG_CPU_FREQ_GOV_ABYSSPLUG)		+= cpufreq_abyssplug.o
+obj-$(CONFIG_CPU_FREQ_GOV_ABYSSPLUGV2)		+= cpufreq_abyssplugv2.o
+obj-$(CONFIG_CPU_FREQ_GOV_ASSWAX)		+= cpufreq_asswax.o
+obj-$(CONFIG_CPU_FREQ_GOV_BADASS)     	        += cpufreq_badass.o
+obj-$(CONFIG_CPU_FREQ_GOV_BIOSHOCK)		+= cpufreq_bioshock.o
+obj-$(CONFIG_CPU_FREQ_GOV_BRAZILIANWAX)		+= cpufreq_brazilianwax.o
+obj-$(CONFIG_CPU_FREQ_GOV_BIOSHOCK)     += cpufreq_bioshock.o
+obj-$(CONFIG_CPU_FREQ_GOV_CAFACTIVE)	+= cpufreq_cafactive.o
+obj-$(CONFIG_CPU_FREQ_GOV_CULTIVATION)	+= cpufreq_cultivation.o
+obj-$(CONFIG_CPU_FREQ_GOV_DESPAIR)		+= cpufreq_despair.o
+obj-$(CONFIG_CPU_FREQ_GOV_DYNAMIC_INTERACTIVE) 	+= cpufreq_dynamic_interactive.o
+obj-$(CONFIG_CPU_FREQ_GOV_DANCEDANCE)   	+= cpufreq_dancedance.o
+obj-$(CONFIG_CPU_FREQ_GOV_ELECTRODEMAND)	+= cpufreq_electrodemand.o
+obj-$(CONFIG_CPU_FREQ_GOV_HYPERX)      	        += cpufreq_hyperx.o
+obj-$(CONFIG_CPU_FREQ_GOV_HYBRID)	        += cpufreq_hybrid.o
+obj-$(CONFIG_CPU_FREQ_GOV_INTERACTIVEPLUS) += cpufreq_interactiveplus.o
+obj-$(CONFIG_CPU_FREQ_GOV_INTELLIDEMAND)	+= cpufreq_intellidemand.o
+obj-$(CONFIG_CPU_FREQ_GOV_INTELLIMM)	        += cpufreq_intellimm.o
+obj-$(CONFIG_CPU_FREQ_GOV_IRONACTIVE)	+= cpufreq_ironactive.o
+obj-$(CONFIG_CPU_FREQ_GOV_NEBULA)	+= cpufreq_nebula.o
+obj-$(CONFIG_CPU_FREQ_GOV_ONDEMANDPLUS)		+= cpufreq_ondemandplus.o
+obj-$(CONFIG_CPU_FREQ_GOV_ONDEMAND_X)		+= cpufreq_ondemand_x.o
+obj-$(CONFIG_CPU_FREQ_GOV_OPTIMAX)		+= cpufreq_optimax.o
 obj-$(CONFIG_CPU_FREQ_GOV_PERFORMANCE)	+= cpufreq_performance.o
 obj-$(CONFIG_CPU_FREQ_GOV_POWERSAVE)	+= cpufreq_powersave.o
 obj-$(CONFIG_CPU_FREQ_GOV_USERSPACE)	+= cpufreq_userspace.o
@@ -21,10 +45,20 @@ obj-$(CONFIG_CPU_FREQ_GOV_INTERACTIVE)	+= cpufreq_interactive.o
 obj-$(CONFIG_CPU_FREQ_GOV_ELEMENTALX)	+= cpufreq_elementalx.o
 obj-$(CONFIG_CPU_FREQ_GOV_DARKNESS)     += cpufreq_darkness.o
 obj-$(CONFIG_CPU_FREQ_GOV_ZZMOOVE)		+= cpufreq_zzmoove.o
+obj-$(CONFIG_CPU_FREQ_GOV_SAVAGEDZEN) 	        += cpufreq_savagedzen.o
+obj-$(CONFIG_CPU_FREQ_GOV_SCARY)		+= cpufreq_scary.o
+obj-$(CONFIG_CPU_FREQ_GOV_SLP)			+= cpufreq_slp.o
+obj-$(CONFIG_CPU_FREQ_GOV_SMARTASS2)		+= cpufreq_smartass2.o
+obj-$(CONFIG_CPU_FREQ_GOV_SMARTASSH3)		+= cpufreq_smartassH3.o
+obj-$(CONFIG_CPU_FREQ_GOV_TRIPNDROID)	        += cpufreq_tripndroid.o
+obj-$(CONFIG_CPU_FREQ_GOV_UBERDEMAND)		+= cpufreq_uberdemand.o
+obj-$(CONFIG_CPU_FREQ_GOV_WAVE)	        	+= cpufreq_wave.o
+obj-$(CONFIG_CPU_FREQ_GOV_WHEATLEY)     += cpufreq_wheatley.o
+obj-$(CONFIG_CPU_FREQ_GOV_XPERIENCE)	   	+= cpufreq_xperience.o
 obj-$(CONFIG_CPU_FREQ_GOV_PEGASUSQ)		+= cpufreq_pegasusq.o
 obj-$(CONFIG_CPU_FREQ_GOV_ALUCARD)		+= cpufreq_alucard.o
 obj-$(CONFIG_CPU_FREQ_GOV_BLUACTIVE)	+= cpufreq_bluactive.o
-obj-$(CONFIG_CPU_FREQ_GOV_LIONFISH)		+= cpufreq_lionfish.o
+obj-$(CONFIG_CPU_FREQ_GOV_LIONHEART)    += cpufreq_lionheart.o
 obj-$(CONFIG_CPU_FREQ_GOV_IMPULSE)		+= cpufreq_impulse.o
 obj-$(CONFIG_CPU_FREQ_GOV_INTELLIACTIVE)		+= cpufreq_intelliactive.o
 obj-$(CONFIG_CPU_FREQ_GOV_NIGHTMARE)	+= cpufreq_nightmare.o

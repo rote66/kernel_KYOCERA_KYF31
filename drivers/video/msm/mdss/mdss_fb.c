@@ -60,6 +60,12 @@
 
 #include "disp_ext.h"
 
+bool display_on = true;
+bool is_display_on(void)
+{
+	return display_on;
+}
+
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
 #else
